@@ -15,7 +15,7 @@ services:
   api:
     build: ./api
     environment:
-      DATABASE_URL: postgres://siem:siempassword@db:5432/siemdb
+      DATABASE_URL: postgresql+psycopg2://siem:siempassword@db:5432/siemdb
     depends_on:
       - db
     ports:

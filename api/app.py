@@ -8,15 +8,32 @@ import uvicorn
 import time
 import asyncio
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from database import (
-    get_db, init_db, 
-    Tenant as TenantModel, 
-    User as UserModel, 
-    Source as SourceModel,
-    Notification as NotificationModel,
-    Report as ReportModel
-)
+# Try to import database functionality, fall back to simple version if failed
+try:
+    from sqlalchemy.orm import Session
+    from database import (
+        get_db, init_db, 
+        Tenant as TenantModel, 
+        User as UserModel, 
+        Source as SourceModel,
+        Notification as NotificationModel,
+        Report as ReportModel,
+        SQLALCHEMY_AVAILABLE
+    )
+    if not SQLALCHEMY_AVAILABLE:
+        raise ImportError("SQLAlchemy not available")
+except (ImportError, AttributeError) as e:
+    print(f"Using simple database fallback: {e}")
+    from database_simple import (
+        get_db, init_db,
+        TenantModel, UserModel, SourceModel,
+        NotificationModel, ReportModel
+    )
+    SQLALCHEMY_AVAILABLE = False
+    
+    # Mock Session class for compatibility
+    class Session:
+        pass
 
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
@@ -61,7 +78,7 @@ fallback_users = {
     }
 }
 
-use_database = True
+use_database = SQLALCHEMY_AVAILABLE
 
 # Initialize database on startup
 @app.on_event("startup")

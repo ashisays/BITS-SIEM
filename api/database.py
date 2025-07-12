@@ -1,33 +1,47 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
-from sqlalchemy.sql import func
 import os
+try:
+    from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey
+    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.orm import sessionmaker, Session, relationship
+    from sqlalchemy.sql import func
+    SQLALCHEMY_AVAILABLE = True
+except ImportError as e:
+    print(f"SQLAlchemy not available: {e}")
+    SQLALCHEMY_AVAILABLE = False
 
 # Database URL from environment variable
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://siem:siempassword@db:5432/siemdb")
 
-print(f"Connecting to database: {DATABASE_URL.replace('siempassword', '***')}")
+engine = None
+SessionLocal = None
+Base = None
 
-# Create engine with connection pooling and retry logic
-try:
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,
-        pool_recycle=300,
-        echo=False  # Set to True for SQL debugging
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    print("Database engine created successfully")
-except Exception as e:
-    print(f"Failed to create database engine: {e}")
-    raise
+if SQLALCHEMY_AVAILABLE:
+    print(f"Connecting to database: {DATABASE_URL.replace('siempassword', '***')}")
+    
+    # Create engine with connection pooling and retry logic
+    try:
+        engine = create_engine(
+            DATABASE_URL,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            echo=False  # Set to True for SQL debugging
+        )
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base = declarative_base()
+        print("Database engine created successfully")
+    except Exception as e:
+        print(f"Failed to create database engine: {e}")
+        engine = None
+        SessionLocal = None
+        Base = None
+else:
+    print("Database functionality disabled - SQLAlchemy not available")
 
-Base = declarative_base()
-
-# Database Models
-class Tenant(Base):
-    __tablename__ = "tenants"
+# Database Models (only defined if SQLAlchemy is available)
+if SQLALCHEMY_AVAILABLE and Base is not None:
+    class Tenant(Base):
+        __tablename__ = "tenants"
     
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False)
