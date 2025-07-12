@@ -207,7 +207,7 @@ const sourceForm = ref({
   name: '',
   type: '',
   ip: '',
-  port: '',
+  port: 80,
   protocol: '',
   notifications: {
     enabled: true,
@@ -268,19 +268,25 @@ const deleteSource = async (source) => {
 const saveSource = async () => {
   try {
     saving.value = true
-    console.log('Saving source:', sourceForm.value)
+    
+    // Ensure port is a number
+    const sourceData = {
+      ...sourceForm.value,
+      port: parseInt(sourceForm.value.port) || 80
+    }
+    console.log('Saving source:', sourceData)
     
     if (editingSource.value) {
       // Update existing source
       console.log('Updating source:', editingSource.value.id)
-      const updatedSource = await api.updateSource(editingSource.value.id, sourceForm.value)
+      const updatedSource = await api.updateSource(editingSource.value.id, sourceData)
       const index = sources.value.findIndex(s => s.id === editingSource.value.id)
       sources.value[index] = updatedSource
       console.log('Source updated successfully')
     } else {
       // Add new source
       console.log('Adding new source')
-      const newSource = await api.addSource(sourceForm.value)
+      const newSource = await api.addSource(sourceData)
       console.log('New source added:', newSource)
       sources.value.push(newSource)
     }
@@ -327,7 +333,7 @@ const closeModal = () => {
     name: '',
     type: '',
     ip: '',
-    port: '',
+    port: 80,
     protocol: '',
     notifications: {
       enabled: true,

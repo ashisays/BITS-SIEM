@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Request
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ValidationError
 from jose import jwt, JWTError
 import time
 import asyncio
@@ -30,6 +32,18 @@ SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
 
 app = FastAPI(title="BITS-SIEM API", version="1.0.0")
+
+# Validation error handler
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    print(f"Validation error on {request.method} {request.url}")
+    print(f"Request body: {body.decode('utf-8') if body else 'Empty'}")
+    print(f"Validation errors: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": body.decode('utf-8') if body else 'Empty'}
+    )
 
 # CORS middleware
 app.add_middleware(
@@ -382,7 +396,9 @@ def get_sources(current=Depends(get_current_user), db = Depends(get_db)):
 @app.post("/api/sources")
 def add_source(source: Source, current=Depends(get_current_user), db = Depends(get_db)):
     user_tenant = current["tenantId"]
-    print(f"Adding source for tenant: {user_tenant} - {source.name}")
+    print(f"Adding source for tenant: {user_tenant}")
+    print(f"Source data received: name={source.name}, type={source.type}, ip={source.ip}, port={source.port}, protocol={source.protocol}")
+    print(f"Notifications: {source.notifications}")
     
     if DATABASE_AVAILABLE and db:
         print("Using database mode for add_source")
