@@ -6,7 +6,7 @@
         <p class="sources-subtitle">Manage and monitor your security data sources</p>
         
         <div class="sources-actions">
-          <button @click="showAddModal = true" class="btn-primary">
+          <button @click="openAddModal" class="btn-primary">
             <span class="icon">+</span>
             Add New Source
           </button>
@@ -237,8 +237,14 @@ const loadSources = async () => {
   }
 }
 
-const refreshSources = () => {
-  loadSources()
+const refreshSources = async () => {
+  await loadSources()
+}
+
+const openAddModal = () => {
+  console.log('Opening add modal...')
+  showAddModal.value = true
+  console.log('showAddModal is now:', showAddModal.value)
 }
 
 const editSource = (source) => {

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Login from '../components/Login.vue'
 import Register from '../components/Register.vue'
 import Dashboard from '../views/Dashboard.vue'
+import Sources from '../views/Sources.vue'
 import SourceConfig from '../components/SourceConfig.vue'
 import Notifications from '../components/Notifications.vue'
 import DiagnosisReports from '../components/DiagnosisReports.vue'
@@ -39,7 +40,7 @@ const routes = [
   {
     path: '/tenant/:tenantId/sources',
     name: 'TenantSources',
-    component: SourceConfig,
+    component: Sources,
     meta: { requiresAuth: true, requiresTenant: true }
   },
   {
