@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: siem
+      POSTGRES_PASSWORD: siempassword
+      POSTGRES_DB: siemdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgres://siem:siempassword@db:5432/siemdb
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+
+  dashboard:
+    build: ./dashboard
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+  ingestion:
+    build: ./ingestion
+    depends_on:
+      - db
+    ports:
+      - "514:514/udp"
+
+  processing:
+    build: ./processing
+    depends_on:
+      - ingestion
+      - db
+
+  notification:
+    build: ./notification
+    depends_on:
+      - db 
