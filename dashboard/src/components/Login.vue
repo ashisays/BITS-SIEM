@@ -59,6 +59,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import api from '../services/api'
 
 const router = useRouter()
 const { setAuth, clearAuth } = useAuth()
@@ -76,14 +77,11 @@ const error = ref('')
 
 const fetchUserTenants = async (email) => {
   try {
-    const response = await fetch(`/api/auth/tenants?email=${encodeURIComponent(email)}`)
-    if (response.ok) {
-      const tenants = await response.json()
-      availableTenants.value = tenants
-      showTenantSelect.value = tenants.length > 1
-      if (tenants.length === 1) {
-        credentials.value.tenantId = tenants[0].id
-      }
+    const tenants = await api.getTenants(email)
+    availableTenants.value = tenants
+    showTenantSelect.value = tenants.length > 1
+    if (tenants.length === 1) {
+      credentials.value.tenantId = tenants[0].id
     }
   } catch (err) {
     console.error('Error fetching tenants:', err)
@@ -110,26 +108,17 @@ const handleLogin = async () => {
       }
     }
     
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(credentials.value)
+    const data = await api.login({
+      email: credentials.value.email,
+      password: credentials.value.password,
+      tenantId: credentials.value.tenantId
     })
     
-    if (response.ok) {
-      const data = await response.json()
-      
-      // Use auth composable to manage session
-      setAuth(data.token, data.user, credentials.value.tenantId)
-      
-      // Redirect to tenant dashboard
-      router.push(`/tenant/${credentials.value.tenantId}/dashboard`)
-    } else {
-      const errorData = await response.json()
-      error.value = errorData.message || 'Login failed'
-    }
+    // Use auth composable to manage session
+    setAuth(data.token, data.user, data.user.tenantId)
+    
+    // Redirect to tenant dashboard
+    router.push(`/tenant/${data.user.tenantId}/dashboard`)
   } catch (err) {
     console.error('Login error:', err)
     error.value = 'Network error. Please try again.'

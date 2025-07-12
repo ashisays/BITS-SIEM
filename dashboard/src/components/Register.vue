@@ -131,7 +131,7 @@ const handleRegister = async () => {
   isLoading.value = true
   
   try {
-    const response = await api.register({
+    await api.register({
       name: formData.value.name,
       email: formData.value.email,
       password: formData.value.password,

@@ -26,16 +26,19 @@ const makeRequest = async (url, options = {}) => {
 
 export default {
   register(data) {
-    return makeRequest('/register', {
+    return makeRequest('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   },
   login(data) {
-    return makeRequest('/login', {
+    return makeRequest('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     })
+  },
+  getTenants(email) {
+    return makeRequest(`/auth/tenants?email=${encodeURIComponent(email)}`)
   },
   getSources() {
     return makeRequest('/sources')
@@ -56,5 +59,26 @@ export default {
   },
   getReports() {
     return makeRequest('/reports')
+  },
+  
+  // Admin endpoints
+  getAdminTenants() {
+    return makeRequest('/admin/tenants')
+  },
+  createTenant(tenantData) {
+    return makeRequest('/admin/tenants', {
+      method: 'POST',
+      body: JSON.stringify(tenantData),
+    })
+  },
+  getAdminUsers(tenantId = null) {
+    const url = tenantId ? `/admin/users?tenantId=${tenantId}` : '/admin/users'
+    return makeRequest(url)
+  },
+  createUser(userData) {
+    return makeRequest('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    })
   }
 } 
