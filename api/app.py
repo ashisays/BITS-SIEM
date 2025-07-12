@@ -137,6 +137,33 @@ fallback_sources = {
     ],
     "demo-org": [
         {"id": 6, "name": "Demo Web Server", "type": "web-server", "ip": "10.0.0.100", "port": 80, "protocol": "http", "status": "active", "lastActivity": datetime.now().isoformat(), "tenant": "demo-org", "notifications": {"enabled": True, "emails": ["admin@demo.com"]}}
+    ],
+    "bits-internal": [
+        {"id": 7, "name": "SRE Monitoring Server", "type": "monitoring", "ip": "172.20.0.10", "port": 9090, "protocol": "http", "status": "active", "lastActivity": datetime.now().isoformat(), "tenant": "bits-internal", "notifications": {"enabled": True, "emails": ["sre@bits.com"]}},
+        {"id": 8, "name": "BITS Internal API Gateway", "type": "api-gateway", "ip": "172.20.0.11", "port": 443, "protocol": "https", "status": "active", "lastActivity": datetime.now().isoformat(), "tenant": "bits-internal", "notifications": {"enabled": True, "emails": ["sre@bits.com"]}}
+    ]
+}
+
+# Fallback notifications data
+fallback_notifications = {
+    "acme-corp": [
+        {"id": 1, "message": "High CPU usage detected on Web Server", "timestamp": datetime.now().isoformat(), "tenant": "acme-corp", "severity": "warning", "isRead": False, "metadata": {"cpu_usage": "85%"}},
+        {"id": 2, "message": "Suspicious login attempt blocked", "timestamp": datetime.now().isoformat(), "tenant": "acme-corp", "severity": "critical", "isRead": False, "metadata": {"ip": "192.168.1.50"}},
+        {"id": 3, "message": "System backup completed successfully", "timestamp": datetime.now().isoformat(), "tenant": "acme-corp", "severity": "info", "isRead": True, "metadata": {"backup_size": "2.3GB"}}
+    ],
+    "beta-industries": [
+        {"id": 4, "message": "Firewall rule updated", "timestamp": datetime.now().isoformat(), "tenant": "beta-industries", "severity": "info", "isRead": False, "metadata": {"rule_id": "FW-001"}},
+        {"id": 5, "message": "Network intrusion attempt detected", "timestamp": datetime.now().isoformat(), "tenant": "beta-industries", "severity": "critical", "isRead": False, "metadata": {"source_ip": "10.0.1.50"}}
+    ],
+    "cisco-systems": [
+        {"id": 6, "message": "Router configuration backup completed", "timestamp": datetime.now().isoformat(), "tenant": "cisco-systems", "severity": "info", "isRead": True, "metadata": {"device": "IOS-Router-01"}},
+        {"id": 7, "message": "ASA Firewall policy violation", "timestamp": datetime.now().isoformat(), "tenant": "cisco-systems", "severity": "warning", "isRead": False, "metadata": {"policy": "DMZ-BLOCK"}}
+    ],
+    "demo-org": [
+        {"id": 8, "message": "Demo alert - System monitoring active", "timestamp": datetime.now().isoformat(), "tenant": "demo-org", "severity": "info", "isRead": False, "metadata": {"status": "monitoring"}}
+    ],
+    "bits-internal": [
+        {"id": 9, "message": "SRE Dashboard - All systems operational", "timestamp": datetime.now().isoformat(), "tenant": "bits-internal", "severity": "info", "isRead": False, "metadata": {"uptime": "99.9%"}}
     ]
 }
 
@@ -150,8 +177,10 @@ async def startup_event():
         if success:
             print("✅ Database mode: PostgreSQL with persistent storage")
             print("📊 Data will be shared across all services")
+            print("👤 SRE user should be available: sre@bits.com")
         else:
             print("⚠️  Database initialization failed, using fallback mode")
+            print("👤 Using fallback mode - SRE user: sre@bits.com")
     else:
         print("⚠️  Database not available, using in-memory fallback mode")
 
@@ -572,11 +601,7 @@ def get_notifications(current=Depends(get_current_user), db = Depends(get_db)):
         } for notif in notifications]
     else:
         # Fallback notifications
-        return [
-            {"id": 1, "message": "High CPU usage detected on Web Server", "timestamp": datetime.now().isoformat(), "tenant": user_tenant, "severity": "warning", "isRead": False, "metadata": {"cpu_usage": "85%"}},
-            {"id": 2, "message": "Suspicious login attempt blocked", "timestamp": datetime.now().isoformat(), "tenant": user_tenant, "severity": "critical", "isRead": False, "metadata": {"ip": "192.168.1.50"}},
-            {"id": 3, "message": "System backup completed successfully", "timestamp": datetime.now().isoformat(), "tenant": user_tenant, "severity": "info", "isRead": True, "metadata": {"backup_size": "2.3GB"}}
-        ]
+        return fallback_notifications.get(user_tenant, [])
 
 @app.get("/api/reports")
 def get_reports(current=Depends(get_current_user), db = Depends(get_db)):

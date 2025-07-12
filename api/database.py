@@ -140,14 +140,18 @@ def init_db():
         
         # Check if data already exists
         existing_tenants = db.query(Tenant).count()
-        if existing_tenants > 0:
-            print("Database already initialized with sample data")
+        sre_user_exists = db.query(User).filter(User.email == "sre@bits.com").first()
+        
+        if existing_tenants > 0 and sre_user_exists:
+            print("Database already initialized with sample data including SRE user")
             db.close()
             return True
+        elif existing_tenants > 0 and not sre_user_exists:
+            print("Database exists but SRE user missing - adding SRE user...")
+        else:
+            print("Initializing database with sample data...")
         
-        print("Initializing database with sample data...")
-        
-        # Create tenants
+        # Create tenants (only if they don't exist)
         tenants_data = [
             {"id": "acme-corp", "name": "Acme Corporation", "description": "Technology company"},
             {"id": "beta-industries", "name": "Beta Industries", "description": "Manufacturing company"},
@@ -157,10 +161,13 @@ def init_db():
         ]
         
         for tenant_data in tenants_data:
-            tenant = Tenant(**tenant_data)
-            db.add(tenant)
+            existing_tenant = db.query(Tenant).filter(Tenant.id == tenant_data["id"]).first()
+            if not existing_tenant:
+                tenant = Tenant(**tenant_data)
+                db.add(tenant)
+                print(f"Created tenant: {tenant_data['name']}")
         
-        # Create users
+        # Create users (only if they don't exist)
         users_data = [
             {"id": "admin@acme.com", "email": "admin@acme.com", "password": "admin123", "name": "Acme Admin", "tenant_id": "acme-corp", "role": "admin", "tenants_access": ["acme-corp"]},
             {"id": "user@acme.com", "email": "user@acme.com", "password": "user123", "name": "Acme User", "tenant_id": "acme-corp", "role": "user", "tenants_access": ["acme-corp"]},
@@ -172,8 +179,11 @@ def init_db():
         ]
         
         for user_data in users_data:
-            user = User(**user_data)
-            db.add(user)
+            existing_user = db.query(User).filter(User.email == user_data["email"]).first()
+            if not existing_user:
+                user = User(**user_data)
+                db.add(user)
+                print(f"Created user: {user_data['name']} ({user_data['email']})")
         
         # Create sources
         sources_data = [
