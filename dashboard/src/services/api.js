@@ -34,11 +34,11 @@ export default {
   login(data) {
     return makeRequest('/auth/login', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        email: data.email,
+        password: data.password
+      }),
     })
-  },
-  getTenants(email) {
-    return makeRequest(`/auth/tenants?email=${encodeURIComponent(email)}`)
   },
   getSources() {
     return makeRequest('/sources')
@@ -46,6 +46,12 @@ export default {
   addSource(source) {
     return makeRequest('/sources', {
       method: 'POST',
+      body: JSON.stringify(source),
+    })
+  },
+  updateSource(id, source) {
+    return makeRequest(`/sources/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(source),
     })
   },

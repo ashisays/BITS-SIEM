@@ -7,7 +7,7 @@ from typing import List, Optional
 import uvicorn
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
@@ -73,7 +73,59 @@ tenants = {
     "beta-industries": {"id": "beta-industries", "name": "Beta Industries", "status": "active", "userCount": 8}
 }
 
-sources = {}
+# Sample sources with notification settings
+sources = {
+    "acme-corp": {
+        1: {
+            "id": 1,
+            "name": "Web Server",
+            "type": "web-server",
+            "ip": "192.168.1.100",
+            "port": 80,
+            "protocol": "http",
+            "status": "active",
+            "lastActivity": datetime.now().isoformat(),
+            "tenant": "acme-corp",
+            "notifications": {
+                "enabled": True,
+                "emails": ["admin@acme.com", "security@acme.com"]
+            }
+        },
+        2: {
+            "id": 2,
+            "name": "Database Server",
+            "type": "database",
+            "ip": "192.168.1.200",
+            "port": 3306,
+            "protocol": "tcp",
+            "status": "active",
+            "lastActivity": datetime.now().isoformat(),
+            "tenant": "acme-corp",
+            "notifications": {
+                "enabled": True,
+                "emails": ["dba@acme.com"]
+            }
+        }
+    },
+    "beta-industries": {
+        3: {
+            "id": 3,
+            "name": "Firewall",
+            "type": "firewall",
+            "ip": "10.0.1.1",
+            "port": 514,
+            "protocol": "udp",
+            "status": "warning",
+            "lastActivity": (datetime.now() - timedelta(hours=1)).isoformat(),
+            "tenant": "beta-industries",
+            "notifications": {
+                "enabled": True,
+                "emails": ["admin@beta.com"]
+            }
+        }
+    }
+}
+
 notifications = {}
 reports = {}
 
@@ -81,7 +133,6 @@ reports = {}
 class LoginRequest(BaseModel):
     email: str
     password: str
-    tenantId: Optional[str] = None
 
 class RegisterRequest(BaseModel):
     name: str
@@ -103,9 +154,12 @@ class TenantResponse(BaseModel):
     name: str
 
 class Source(BaseModel):
-    id: int
+    name: str
+    type: str
     ip: str
-    tenant: str
+    port: int
+    protocol: str
+    notifications: dict = None
 
 class Notification(BaseModel):
     id: int
@@ -193,13 +247,8 @@ def login(login_data: LoginRequest):
     if not user or user["password"] != login_data.password:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # If tenantId is specified, validate user has access
-    if login_data.tenantId:
-        user_tenants = user.get("tenants", [user["tenantId"]])
-        if login_data.tenantId not in user_tenants and user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Access denied to tenant")
-        # Update user's current tenant
-        user["tenantId"] = login_data.tenantId
+    # User can only login to their registered organization
+    # No tenant selection - use their assigned tenant
     
     token = create_jwt(user)
     
@@ -219,20 +268,73 @@ def login(login_data: LoginRequest):
 @app.get("/api/sources")
 def get_sources(current=Depends(get_current_user)):
     user_tenant = current["tenantId"]
-    return [s for s in sources.values() if s["tenant"] == user_tenant]
+    tenant_sources = sources.get(user_tenant, {})
+    return list(tenant_sources.values())
 
 @app.post("/api/sources")
 def add_source(source: Source, current=Depends(get_current_user)):
-    source_id = len(sources) + 1
-    sources[source_id] = {"id": source_id, "ip": source.ip, "tenant": current["tenantId"]}
-    return sources[source_id]
+    user_tenant = current["tenantId"]
+    
+    # Initialize tenant sources if not exists
+    if user_tenant not in sources:
+        sources[user_tenant] = {}
+    
+    # Generate new ID
+    tenant_sources = sources[user_tenant]
+    source_id = max(tenant_sources.keys()) + 1 if tenant_sources else 1
+    
+    # Create new source
+    new_source = {
+        "id": source_id,
+        "name": source.name,
+        "type": source.type,
+        "ip": source.ip,
+        "port": source.port,
+        "protocol": source.protocol,
+        "status": "active",
+        "lastActivity": datetime.now().isoformat(),
+        "tenant": user_tenant,
+        "notifications": source.notifications or {"enabled": False, "emails": []}
+    }
+    
+    sources[user_tenant][source_id] = new_source
+    return new_source
+
+@app.put("/api/sources/{source_id}")
+def update_source(source_id: int, source: Source, current=Depends(get_current_user)):
+    user_tenant = current["tenantId"]
+    tenant_sources = sources.get(user_tenant, {})
+    
+    if source_id not in tenant_sources:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    # Update source
+    updated_source = {
+        "id": source_id,
+        "name": source.name,
+        "type": source.type,
+        "ip": source.ip,
+        "port": source.port,
+        "protocol": source.protocol,
+        "status": tenant_sources[source_id].get("status", "active"),
+        "lastActivity": tenant_sources[source_id].get("lastActivity", datetime.now().isoformat()),
+        "tenant": user_tenant,
+        "notifications": source.notifications or {"enabled": False, "emails": []}
+    }
+    
+    sources[user_tenant][source_id] = updated_source
+    return updated_source
 
 @app.delete("/api/sources/{source_id}")
 def delete_source(source_id: int, current=Depends(get_current_user)):
-    if source_id in sources and sources[source_id]["tenant"] == current["tenantId"]:
-        del sources[source_id]
-        return {"message": "Source deleted successfully"}
-    raise HTTPException(status_code=404, detail="Source not found")
+    user_tenant = current["tenantId"]
+    tenant_sources = sources.get(user_tenant, {})
+    
+    if source_id not in tenant_sources:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    del sources[user_tenant][source_id]
+    return {"message": "Source deleted successfully"}
 
 @app.get("/api/notifications")
 def get_notifications(current=Depends(get_current_user)):

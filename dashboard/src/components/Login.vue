@@ -29,16 +29,6 @@
           />
         </div>
         
-        <div class="form-group" v-if="showTenantSelect">
-          <label for="tenant">Select Tenant</label>
-          <select id="tenant" v-model="credentials.tenantId" required>
-            <option value="">Choose a tenant...</option>
-            <option v-for="tenant in availableTenants" :key="tenant.id" :value="tenant.id">
-              {{ tenant.name }}
-            </option>
-          </select>
-        </div>
-        
         <button type="submit" class="login-btn" :disabled="isLoading">
           {{ isLoading ? 'Signing in...' : 'Sign In' }}
         </button>
@@ -66,58 +56,27 @@ const { setAuth, clearAuth } = useAuth()
 
 const credentials = ref({
   email: '',
-  password: '',
-  tenantId: ''
+  password: ''
 })
 
-const availableTenants = ref([])
-const showTenantSelect = ref(false)
 const isLoading = ref(false)
 const error = ref('')
 
-const fetchUserTenants = async (email) => {
-  try {
-    const tenants = await api.getTenants(email)
-    availableTenants.value = tenants
-    showTenantSelect.value = tenants.length > 1
-    if (tenants.length === 1) {
-      credentials.value.tenantId = tenants[0].id
-    }
-  } catch (err) {
-    console.error('Error fetching tenants:', err)
-    // Mock data for development
-    availableTenants.value = [
-      { id: 'acme-corp', name: 'Acme Corporation' },
-      { id: 'beta-industries', name: 'Beta Industries' }
-    ]
-    showTenantSelect.value = true
-  }
-}
 
 const handleLogin = async () => {
   error.value = ''
   isLoading.value = true
   
   try {
-    // First check if we need to fetch tenants
-    if (!credentials.value.tenantId && availableTenants.value.length === 0) {
-      await fetchUserTenants(credentials.value.email)
-      if (showTenantSelect.value) {
-        isLoading.value = false
-        return // Wait for tenant selection
-      }
-    }
-    
     const data = await api.login({
       email: credentials.value.email,
-      password: credentials.value.password,
-      tenantId: credentials.value.tenantId
+      password: credentials.value.password
     })
     
     // Use auth composable to manage session
     setAuth(data.token, data.user, data.user.tenantId)
     
-    // Redirect to tenant dashboard
+    // Redirect to user's tenant dashboard
     router.push(`/tenant/${data.user.tenantId}/dashboard`)
   } catch (err) {
     console.error('Login error:', err)
@@ -142,12 +101,7 @@ const handleLogin = async () => {
   }
 }
 
-// Auto-fetch tenants when email changes
-const emailChanged = () => {
-  if (credentials.value.email.includes('@')) {
-    fetchUserTenants(credentials.value.email)
-  }
-}
+
 
 onMounted(() => {
   // Clear any existing auth data
