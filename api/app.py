@@ -215,7 +215,9 @@ def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
 # Authentication endpoints
 @app.post("/api/auth/register")
 def register(register_data: RegisterRequest, db = Depends(get_db)):
+    print(f"Registration attempt for: {register_data.email}")
     if DATABASE_AVAILABLE and db:
+        print("Using database mode for registration")
         # Database registration
         existing_user = db.query(UserModel).filter(UserModel.email == register_data.email).first()
         if existing_user:
@@ -250,9 +252,11 @@ def register(register_data: RegisterRequest, db = Depends(get_db)):
         )
         db.add(user)
         db.commit()
+        print(f"User created in database: {user.email} with tenant {user.tenant_id}")
         
     else:
         # Fallback registration
+        print("Using fallback mode for registration")
         if register_data.email in fallback_users:
             raise HTTPException(status_code=400, detail="Email already registered")
         
@@ -275,16 +279,30 @@ def register(register_data: RegisterRequest, db = Depends(get_db)):
         # Initialize empty sources
         if tenant_id not in fallback_sources:
             fallback_sources[tenant_id] = []
+        
+        print(f"User created in fallback: {register_data.email} with tenant {tenant_id}")
     
     return {"message": "User registered successfully"}
 
 @app.post("/api/auth/login")
 def login(login_data: LoginRequest, db = Depends(get_db)):
+    print(f"Login attempt for: {login_data.email}")
     if DATABASE_AVAILABLE and db:
+        print("Using database mode for login")
         # Database login
         user = db.query(UserModel).filter(UserModel.email == login_data.email).first()
         
-        if not user or user.password != login_data.password or not user.is_active:
+        if not user:
+            print(f"User not found in database: {login_data.email}")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        print(f"User found: {user.email}, checking password...")
+        if user.password != login_data.password:
+            print(f"Password mismatch for {user.email}")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        if not user.is_active:
+            print(f"User inactive: {user.email}")
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
         token = create_jwt(user)
@@ -301,9 +319,17 @@ def login(login_data: LoginRequest, db = Depends(get_db)):
         }
     else:
         # Fallback login
+        print("Using fallback mode for login")
         user_data = fallback_users.get(login_data.email)
         
-        if not user_data or user_data["password"] != login_data.password:
+        if not user_data:
+            print(f"User not found in fallback: {login_data.email}")
+            print(f"Available users: {list(fallback_users.keys())}")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+            
+        print(f"User found in fallback: {user_data['email']}")
+        if user_data["password"] != login_data.password:
+            print(f"Password mismatch in fallback for {user_data['email']}")
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
         if not user_data.get("is_active", True):
