@@ -2,8 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconn
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import jwt
-from jwt import JWTError
+from jose import jwt, JWTError
 import time
 import asyncio
 from datetime import datetime, timedelta
