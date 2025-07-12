@@ -352,10 +352,13 @@ def login(login_data: LoginRequest, db = Depends(get_db)):
 @app.get("/api/sources")
 def get_sources(current=Depends(get_current_user), db = Depends(get_db)):
     user_tenant = current["tenantId"]
+    print(f"Getting sources for tenant: {user_tenant}")
     
     if DATABASE_AVAILABLE and db:
+        print("Using database mode for get_sources")
         # Database sources
         sources = db.query(SourceModel).filter(SourceModel.tenant_id == user_tenant).all()
+        print(f"Found {len(sources)} sources in database for tenant {user_tenant}")
         return [{
             "id": source.id,
             "name": source.name,
@@ -370,13 +373,19 @@ def get_sources(current=Depends(get_current_user), db = Depends(get_db)):
         } for source in sources]
     else:
         # Fallback sources
-        return fallback_sources.get(user_tenant, [])
+        print("Using fallback mode for get_sources")
+        sources = fallback_sources.get(user_tenant, [])
+        print(f"Found {len(sources)} sources in fallback for tenant {user_tenant}")
+        print(f"Available fallback tenants: {list(fallback_sources.keys())}")
+        return sources
 
 @app.post("/api/sources")
 def add_source(source: Source, current=Depends(get_current_user), db = Depends(get_db)):
     user_tenant = current["tenantId"]
+    print(f"Adding source for tenant: {user_tenant} - {source.name}")
     
     if DATABASE_AVAILABLE and db:
+        print("Using database mode for add_source")
         # Database add source
         new_source = SourceModel(
             name=source.name,
@@ -391,6 +400,7 @@ def add_source(source: Source, current=Depends(get_current_user), db = Depends(g
         db.add(new_source)
         db.commit()
         db.refresh(new_source)
+        print(f"Source added to database: {new_source.name} (ID: {new_source.id})")
         
         return {
             "id": new_source.id,
@@ -406,8 +416,10 @@ def add_source(source: Source, current=Depends(get_current_user), db = Depends(g
         }
     else:
         # Fallback add source
+        print("Using fallback mode for add_source")
         if user_tenant not in fallback_sources:
             fallback_sources[user_tenant] = []
+            print(f"Created new tenant in fallback: {user_tenant}")
         
         # Get next ID
         all_sources = []
@@ -429,6 +441,7 @@ def add_source(source: Source, current=Depends(get_current_user), db = Depends(g
         }
         
         fallback_sources[user_tenant].append(new_source)
+        print(f"Source added to fallback: {new_source['name']} (ID: {new_source['id']})")
         return new_source
 
 @app.put("/api/sources/{source_id}")
