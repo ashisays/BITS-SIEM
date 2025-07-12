@@ -28,14 +28,23 @@ onMounted(() => {
   box-sizing: border-box;
 }
 
+html {
+  font-size: 16px;
+}
+
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
   line-height: 1.6;
   color: #333;
+  background-color: #f8f9fa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Global button styles */
@@ -82,9 +91,21 @@ body {
 
 /* Utility classes */
 .container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 24px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 0 16px;
+  }
 }
 
 .text-center {
@@ -100,8 +121,16 @@ body {
 
 /* Main content layout */
 .main-content {
-  min-height: calc(100vh - 64px); /* Subtract navbar height */
+  flex: 1;
+  min-height: calc(100vh - 72px); /* Subtract navbar height */
   background-color: #f8f9fa;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    min-height: calc(100vh - 64px);
+  }
 }
 
 /* Override for login/register pages */
@@ -109,5 +138,6 @@ body {
 .main-content:has(.register-container) {
   min-height: 100vh;
   background: transparent;
+  flex: 1;
 }
 </style>

@@ -177,10 +177,19 @@ const handleRegister = async () => {
 .register-card {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-  padding: 40px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  padding: 48px;
   width: 100%;
-  max-width: 500px;
+  max-width: 580px;
+  min-width: 480px;
+}
+
+@media (max-width: 720px) {
+  .register-card {
+    padding: 32px;
+    max-width: 100%;
+    min-width: auto;
+  }
 }
 
 .register-header {
@@ -189,38 +198,63 @@ const handleRegister = async () => {
 }
 
 .register-header h1 {
-  font-size: 2.5rem;
-  font-weight: bold;
+  font-size: 2.75rem;
+  font-weight: 700;
   color: #333;
-  margin: 0 0 10px 0;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.025em;
 }
 
 .register-header p {
   color: #666;
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.125rem;
+  font-weight: 400;
+}
+
+@media (max-width: 720px) {
+  .register-header h1 {
+    font-size: 2.25rem;
+  }
+  
+  .register-header p {
+    font-size: 1rem;
+  }
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   font-weight: 600;
   color: #333;
+  font-size: 0.95rem;
 }
 
 .form-group input,
 .form-group select {
   width: 100%;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border: 2px solid #e1e5e9;
   border-radius: 8px;
   font-size: 16px;
-  transition: border-color 0.3s ease;
+  transition: all 0.2s ease;
   box-sizing: border-box;
+  background-color: #fff;
+}
+
+@media (max-width: 720px) {
+  .form-group {
+    margin-bottom: 20px;
+  }
+  
+  .form-group input,
+  .form-group select {
+    padding: 12px 16px;
+  }
 }
 
 .form-group input:focus,
@@ -231,7 +265,7 @@ const handleRegister = async () => {
 
 .register-btn {
   width: 100%;
-  padding: 14px;
+  padding: 16px 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
@@ -239,8 +273,9 @@ const handleRegister = async () => {
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease;
-  margin-top: 10px;
+  transition: all 0.2s ease;
+  margin-top: 12px;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
 }
 
 .register-btn:hover:not(:disabled) {

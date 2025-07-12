@@ -114,9 +114,8 @@ const logout = () => {
   clearAuth()
   if (sessionTimer) clearTimeout(sessionTimer)
   
-  // Redirect to login
-  const router = useRouter()
-  router.push('/login')
+  // Redirect to login using window.location for compatibility
+  window.location.href = '/login'
 }
 
 // Activity tracking for session management

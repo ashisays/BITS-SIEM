@@ -181,24 +181,15 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
 const route = useRoute()
+const { isAuthenticated, user, logout: authLogout } = useAuth()
 
 const showUserMenu = ref(false)
 const showMobileMenu = ref(false)
 const selectedTenantId = ref('')
-
-// Authentication state
-const isAuthenticated = computed(() => !!localStorage.getItem('jwt'))
-const user = computed(() => {
-  try {
-    const userStr = localStorage.getItem('user')
-    return userStr ? JSON.parse(userStr) : null
-  } catch {
-    return null
-  }
-})
 
 const currentTenantId = computed(() => {
   return route.params.tenantId || localStorage.getItem('currentTenantId')
@@ -248,10 +239,7 @@ const switchTenant = () => {
 }
 
 const logout = () => {
-  localStorage.removeItem('jwt')
-  localStorage.removeItem('user')
-  localStorage.removeItem('currentTenantId')
-  router.push('/login')
+  authLogout()
 }
 
 // Close menus when clicking outside
@@ -284,13 +272,20 @@ onUnmounted(() => {
 }
 
 .navbar-container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  height: 72px;
+}
+
+@media (max-width: 768px) {
+  .navbar-container {
+    padding: 0 20px;
+    height: 64px;
+  }
 }
 
 .navbar-brand {
@@ -306,41 +301,70 @@ onUnmounted(() => {
 
 .brand-link h2 {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: bold;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 
 .tenant-badge {
   background: rgba(255, 255, 255, 0.2);
   color: white;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.8rem;
+  padding: 6px 16px;
+  border-radius: 16px;
+  font-size: 0.875rem;
   font-weight: 500;
+  backdrop-filter: blur(10px);
+}
+
+@media (max-width: 768px) {
+  .brand-link h2 {
+    font-size: 1.5rem;
+  }
+  
+  .tenant-badge {
+    padding: 4px 12px;
+    font-size: 0.8rem;
+  }
 }
 
 .navbar-nav {
   display: flex;
   align-items: center;
-  gap: 30px;
+  gap: 40px;
 }
 
 .nav-section {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: rgba(255, 255, 255, 0.8);
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.85);
   text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 6px;
+  padding: 10px 18px;
+  border-radius: 8px;
   transition: all 0.2s ease;
   font-weight: 500;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 1024px) {
+  .navbar-nav {
+    gap: 30px;
+  }
+  
+  .nav-section {
+    gap: 20px;
+  }
+  
+  .nav-link {
+    padding: 8px 16px;
+    gap: 8px;
+  }
 }
 
 .nav-link:hover {
@@ -371,28 +395,43 @@ onUnmounted(() => {
 .user-dropdown {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   color: white;
   cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 6px;
-  transition: background 0.2s ease;
+  padding: 10px 16px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
 .user-dropdown:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
 }
 
 .user-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 768px) {
+  .user-dropdown {
+    gap: 10px;
+    padding: 8px 12px;
+  }
+  
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
 }
 
 .user-name {
