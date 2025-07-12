@@ -51,8 +51,8 @@
           </router-link>
         </div>
 
-        <!-- Admin Links -->
-        <div class="nav-section" v-if="isAdmin">
+        <!-- SRE/Admin Links -->
+        <div class="nav-section" v-if="isSRE">
           <div class="nav-divider"></div>
           <router-link 
             to="/admin/tenants" 
@@ -154,13 +154,13 @@
           📋 Reports
         </router-link>
         
-        <div class="mobile-divider" v-if="isAdmin"></div>
+        <div class="mobile-divider" v-if="isSRE"></div>
         
         <router-link 
           to="/admin/tenants" 
           class="mobile-nav-link admin-link"
           @click="closeMobileMenu"
-          v-if="isAdmin"
+          v-if="isSRE"
         >
           🏢 Tenants
         </router-link>
@@ -169,7 +169,7 @@
           to="/admin/users" 
           class="mobile-nav-link admin-link"
           @click="closeMobileMenu"
-          v-if="isAdmin"
+          v-if="isSRE"
         >
           👥 Users
         </router-link>
@@ -209,6 +209,10 @@ const currentTenant = computed(() => {
     'beta-industries': { id: 'beta-industries', name: 'Beta Industries' }
   }
   return tenants[currentTenantId.value] || { id: currentTenantId.value, name: currentTenantId.value }
+})
+
+const isSRE = computed(() => {
+  return user.value?.role === 'sre' || user.value?.role === 'admin' || user.value?.roles?.includes('sre')
 })
 
 const isAdmin = computed(() => {

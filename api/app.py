@@ -111,6 +111,15 @@ fallback_users = {
         "role": "user",
         "tenants": ["demo-org"],
         "is_active": True
+    },
+    "sre@bits.com": {
+        "email": "sre@bits.com",
+        "password": "sre123",
+        "name": "BITS SRE",
+        "tenantId": "bits-internal",
+        "role": "sre",
+        "tenants": ["bits-internal", "acme-corp", "beta-industries", "cisco-systems", "demo-org"],
+        "is_active": True
     }
 }
 
@@ -658,6 +667,53 @@ def get_all_users(current=Depends(get_current_user), db = Depends(get_db)):
             }
             for user in fallback_users.values()
         ]
+
+# Dashboard stats endpoint
+@app.get("/api/dashboard/stats")
+def get_dashboard_stats(current=Depends(get_current_user), db = Depends(get_db)):
+    user_tenant = current["tenantId"]
+    print(f"Getting dashboard stats for tenant: {user_tenant}")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database stats
+        try:
+            sources_count = db.query(SourceModel).filter(SourceModel.tenant_id == user_tenant).count()
+            active_sources = db.query(SourceModel).filter(
+                SourceModel.tenant_id == user_tenant,
+                SourceModel.status == 'active'
+            ).count()
+            
+            unread_alerts = db.query(NotificationModel).filter(
+                NotificationModel.tenant_id == user_tenant,
+                NotificationModel.is_read == False,
+                NotificationModel.severity.in_(['critical', 'warning'])
+            ).count()
+            
+            reports = db.query(ReportModel).filter(ReportModel.tenant_id == user_tenant).all()
+            total_events = sum(report.data.get('total_events', 0) if report.data else 0 for report in reports)
+            
+            return {
+                "totalSources": sources_count,
+                "activeSources": active_sources,
+                "alerts": unread_alerts,
+                "totalEvents": total_events,
+                "uptime": "99.9%" if active_sources > 0 else "0%"
+            }
+        except Exception as e:
+            print(f"Error getting database stats: {e}")
+            # Fall through to fallback
+    
+    # Fallback stats
+    tenant_sources = fallback_sources.get(user_tenant, [])
+    active_sources = len([s for s in tenant_sources if s.get('status') == 'active'])
+    
+    return {
+        "totalSources": len(tenant_sources),
+        "activeSources": active_sources,
+        "alerts": 0,  # New tenants start with zero alerts
+        "totalEvents": 0,  # New tenants start with zero events
+        "uptime": "99.9%" if active_sources > 0 else "0%"
+    }
 
 # Health check endpoint
 @app.get("/health")

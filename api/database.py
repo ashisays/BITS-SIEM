@@ -152,7 +152,8 @@ def init_db():
             {"id": "acme-corp", "name": "Acme Corporation", "description": "Technology company"},
             {"id": "beta-industries", "name": "Beta Industries", "description": "Manufacturing company"},
             {"id": "cisco-systems", "name": "Cisco Systems", "description": "Networking and cybersecurity company"},
-            {"id": "demo-org", "name": "Demo Organization", "description": "Demo organization for testing"}
+            {"id": "demo-org", "name": "Demo Organization", "description": "Demo organization for testing"},
+            {"id": "bits-internal", "name": "BITS Internal", "description": "Internal BITS organization for SRE team"}
         ]
         
         for tenant_data in tenants_data:
@@ -166,7 +167,8 @@ def init_db():
             {"id": "admin@beta.com", "email": "admin@beta.com", "password": "admin123", "name": "Beta Admin", "tenant_id": "beta-industries", "role": "admin", "tenants_access": ["beta-industries"]},
             {"id": "aspundir@cisco.com", "email": "aspundir@cisco.com", "password": "password123", "name": "Aspundir Singh", "tenant_id": "cisco-systems", "role": "admin", "tenants_access": ["cisco-systems"]},
             {"id": "admin@demo.com", "email": "admin@demo.com", "password": "demo123", "name": "Demo Admin", "tenant_id": "demo-org", "role": "admin", "tenants_access": ["demo-org"]},
-            {"id": "user@demo.com", "email": "user@demo.com", "password": "demo123", "name": "Demo User", "tenant_id": "demo-org", "role": "user", "tenants_access": ["demo-org"]}
+            {"id": "user@demo.com", "email": "user@demo.com", "password": "demo123", "name": "Demo User", "tenant_id": "demo-org", "role": "user", "tenants_access": ["demo-org"]},
+            {"id": "sre@bits.com", "email": "sre@bits.com", "password": "sre123", "name": "BITS SRE", "tenant_id": "bits-internal", "role": "sre", "tenants_access": ["bits-internal", "acme-corp", "beta-industries", "cisco-systems", "demo-org"]}
         ]
         
         for user_data in users_data:

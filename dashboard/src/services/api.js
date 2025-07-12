@@ -66,6 +66,9 @@ export default {
   getReports() {
     return makeRequest('/reports')
   },
+  getDashboardStats() {
+    return makeRequest('/dashboard/stats')
+  },
   
   // Admin endpoints
   getAdminTenants() {
