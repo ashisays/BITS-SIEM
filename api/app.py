@@ -8,6 +8,15 @@ import uvicorn
 import time
 import asyncio
 from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+from database import (
+    get_db, init_db, 
+    Tenant as TenantModel, 
+    User as UserModel, 
+    Source as SourceModel,
+    Notification as NotificationModel,
+    Report as ReportModel
+)
 
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
@@ -24,110 +33,16 @@ app.add_middleware(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-# In-memory stores for demo - Initialize with sample data
-users = {
-    "admin@acme.com": {
-        "email": "admin@acme.com",
-        "password": "admin123",
-        "name": "Acme Admin",
-        "tenantId": "acme-corp",
-        "role": "admin",
-        "tenants": ["acme-corp"]
-    },
-    "admin@beta.com": {
-        "email": "admin@beta.com",
-        "password": "admin123",
-        "name": "Beta Admin",
-        "tenantId": "beta-industries",
-        "role": "admin",
-        "tenants": ["beta-industries"]
-    },
-    "user@acme.com": {
-        "email": "user@acme.com",
-        "password": "user123",
-        "name": "Acme User",
-        "tenantId": "acme-corp",
-        "role": "user",
-        "tenants": ["acme-corp"]
-    },
-    "user@beta.com": {
-        "email": "user@beta.com", 
-        "password": "user123",
-        "name": "Beta User",
-        "tenantId": "beta-industries",
-        "role": "user",
-        "tenants": ["beta-industries"]
-    },
-    "superadmin@system.com": {
-        "email": "superadmin@system.com",
-        "password": "super123",
-        "name": "Super Admin",
-        "tenantId": "acme-corp",
-        "role": "superadmin",
-        "tenants": ["acme-corp", "beta-industries"]
-    }
-}
-
-tenants = {
-    "acme-corp": {"id": "acme-corp", "name": "Acme Corporation", "status": "active", "userCount": 15},
-    "beta-industries": {"id": "beta-industries", "name": "Beta Industries", "status": "active", "userCount": 8}
-}
-
-# Sample sources with notification settings
-sources = {
-    "acme-corp": {
-        1: {
-            "id": 1,
-            "name": "Web Server",
-            "type": "web-server",
-            "ip": "192.168.1.100",
-            "port": 80,
-            "protocol": "http",
-            "status": "active",
-            "lastActivity": datetime.now().isoformat(),
-            "tenant": "acme-corp",
-            "notifications": {
-                "enabled": True,
-                "emails": ["admin@acme.com", "security@acme.com"]
-            }
-        },
-        2: {
-            "id": 2,
-            "name": "Database Server",
-            "type": "database",
-            "ip": "192.168.1.200",
-            "port": 3306,
-            "protocol": "tcp",
-            "status": "active",
-            "lastActivity": datetime.now().isoformat(),
-            "tenant": "acme-corp",
-            "notifications": {
-                "enabled": True,
-                "emails": ["dba@acme.com"]
-            }
-        }
-    },
-    "beta-industries": {
-        3: {
-            "id": 3,
-            "name": "Firewall",
-            "type": "firewall",
-            "ip": "10.0.1.1",
-            "port": 514,
-            "protocol": "udp",
-            "status": "warning",
-            "lastActivity": (datetime.now() - timedelta(hours=1)).isoformat(),
-            "tenant": "beta-industries",
-            "notifications": {
-                "enabled": True,
-                "emails": ["admin@beta.com"]
-            }
-        }
-    }
-}
-
-notifications = {}
-reports = {}
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    try:
+        print("Initializing database...")
+        init_db()
+        print("Database initialization completed")
+    except Exception as e:
+        print(f"Database initialization failed: {e}")
+        raise
 
 # Pydantic Models
 class LoginRequest(BaseModel):
@@ -174,278 +89,400 @@ class Report(BaseModel):
     tenant: str
 
 # Helper functions
-def create_jwt(user):
+def create_jwt(user: UserModel):
     payload = {
-        "email": user["email"],
-        "tenantId": user["tenantId"],
-        "role": user["role"],
-        "name": user["name"]
+        "email": user.email,
+        "tenantId": user.tenant_id,
+        "role": user.role,
+        "name": user.name,
+        "user_id": user.id
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
+        print(f"Validating token: {token[:20]}...")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("email")
+        print(f"Token payload email: {email}")
+        
         if email is None:
+            print("No email in token payload")
             raise HTTPException(status_code=401, detail="Invalid token")
-        return payload
-    except JWTError:
+        
+        # Verify user still exists in database
+        user = db.query(UserModel).filter(UserModel.email == email).first()
+        if not user:
+            print(f"User not found in database: {email}")
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        if not user.is_active:
+            print(f"User inactive: {email}")
+            raise HTTPException(status_code=401, detail="User inactive")
+        
+        print(f"User validation successful: {user.email}, tenant: {user.tenant_id}")
+        return {
+            "email": user.email,
+            "tenantId": user.tenant_id,
+            "role": user.role,
+            "name": user.name,
+            "user_id": user.id
+        }
+    except JWTError as e:
+        print(f"JWT decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in get_current_user: {e}")
+        raise HTTPException(status_code=500, detail="Authentication error")
 
 # Authentication endpoints
-@app.get("/api/auth/tenants")
-def get_user_tenants(email: str):
-    """Get tenants accessible to a user by email"""
-    user = users.get(email)
-    if not user:
-        # Return default tenants for new users
-        return [
-            {"id": "acme-corp", "name": "Acme Corporation"},
-            {"id": "beta-industries", "name": "Beta Industries"}
-        ]
-    
-    user_tenants = user.get("tenants", [user["tenantId"]])
-    return [{
-        "id": tenant_id,
-        "name": tenants.get(tenant_id, {"name": tenant_id}).get("name", tenant_id)
-    } for tenant_id in user_tenants]
-
 @app.post("/api/auth/register")
-def register(user_data: RegisterRequest):
-    if user_data.email in users:
+def register(user_data: RegisterRequest, db: Session = Depends(get_db)):
+    # Check if user already exists
+    existing_user = db.query(UserModel).filter(UserModel.email == user_data.email).first()
+    if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
     
     # Create tenant if it doesn't exist
     tenant_id = user_data.tenant.lower().replace(" ", "-")
-    if tenant_id not in tenants:
-        tenants[tenant_id] = {
-            "id": tenant_id,
-            "name": user_data.tenant,
-            "status": "active",
-            "userCount": 0
-        }
+    tenant = db.query(TenantModel).filter(TenantModel.id == tenant_id).first()
+    
+    if not tenant:
+        tenant = TenantModel(
+            id=tenant_id,
+            name=user_data.tenant,
+            status="active",
+            user_count=0
+        )
+        db.add(tenant)
+        db.flush()  # Get the tenant ID
     
     # Create user
-    users[user_data.email] = {
-        "email": user_data.email,
-        "password": user_data.password,
-        "name": user_data.name,
-        "tenantId": tenant_id,
-        "role": user_data.role,
-        "tenants": [tenant_id]
-    }
+    new_user = UserModel(
+        email=user_data.email,
+        password=user_data.password,  # In production, hash this password
+        name=user_data.name,
+        tenant_id=tenant_id,
+        role=user_data.role,
+        tenants_access=[tenant_id]
+    )
+    db.add(new_user)
     
     # Update tenant user count
-    tenants[tenant_id]["userCount"] += 1
+    tenant.user_count = db.query(UserModel).filter(UserModel.tenant_id == tenant_id).count() + 1
     
+    db.commit()
     return {"message": "User registered successfully"}
 
 @app.post("/api/auth/login")
-def login(login_data: LoginRequest):
-    user = users.get(login_data.email)
-    if not user or user["password"] != login_data.password:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    # User can only login to their registered organization
-    # No tenant selection - use their assigned tenant
-    
-    token = create_jwt(user)
-    
-    return {
-        "token": token,
-        "user": {
-            "id": user["email"],
-            "name": user["name"],
-            "email": user["email"],
-            "tenantId": user["tenantId"],
-            "role": user["role"],
-            "tenants": user.get("tenants", [user["tenantId"]])
+def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+    try:
+        print(f"Login attempt for: {login_data.email}")
+        
+        # Find user in database
+        user = db.query(UserModel).filter(UserModel.email == login_data.email).first()
+        print(f"User found: {user is not None}")
+        
+        if not user:
+            print(f"No user found with email: {login_data.email}")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        if user.password != login_data.password:
+            print(f"Password mismatch for user: {login_data.email}")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        if not user.is_active:
+            print(f"User inactive: {login_data.email}")
+            raise HTTPException(status_code=401, detail="Account is inactive")
+        
+        # User can only login to their registered organization
+        token = create_jwt(user)
+        print(f"Login successful for: {user.email}, tenant: {user.tenant_id}")
+        
+        return {
+            "token": token,
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "tenantId": user.tenant_id,
+                "role": user.role,
+                "tenants": user.tenants_access or [user.tenant_id]
+            }
         }
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # SIEM Data endpoints
 @app.get("/api/sources")
-def get_sources(current=Depends(get_current_user)):
-    user_tenant = current["tenantId"]
-    tenant_sources = sources.get(user_tenant, {})
-    return list(tenant_sources.values())
+def get_sources(current=Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        user_tenant = current["tenantId"]
+        print(f"Getting sources for tenant: {user_tenant}")
+        
+        sources = db.query(SourceModel).filter(SourceModel.tenant_id == user_tenant).all()
+        print(f"Found {len(sources)} sources")
+        
+        return [{
+            "id": source.id,
+            "name": source.name,
+            "type": source.type,
+            "ip": source.ip,
+            "port": source.port,
+            "protocol": source.protocol,
+            "status": source.status,
+            "lastActivity": source.last_activity.isoformat() if source.last_activity else None,
+            "tenant": source.tenant_id,
+            "notifications": source.notifications or {"enabled": False, "emails": []}
+        } for source in sources]
+    except Exception as e:
+        print(f"Error getting sources: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving sources")
 
 @app.post("/api/sources")
-def add_source(source: Source, current=Depends(get_current_user)):
+def add_source(source: Source, current=Depends(get_current_user), db: Session = Depends(get_db)):
     user_tenant = current["tenantId"]
-    
-    # Initialize tenant sources if not exists
-    if user_tenant not in sources:
-        sources[user_tenant] = {}
-    
-    # Generate new ID
-    tenant_sources = sources[user_tenant]
-    source_id = max(tenant_sources.keys()) + 1 if tenant_sources else 1
     
     # Create new source
-    new_source = {
-        "id": source_id,
-        "name": source.name,
-        "type": source.type,
-        "ip": source.ip,
-        "port": source.port,
-        "protocol": source.protocol,
-        "status": "active",
-        "lastActivity": datetime.now().isoformat(),
-        "tenant": user_tenant,
-        "notifications": source.notifications or {"enabled": False, "emails": []}
-    }
+    new_source = SourceModel(
+        name=source.name,
+        type=source.type,
+        ip=source.ip,
+        port=source.port,
+        protocol=source.protocol,
+        status="active",
+        tenant_id=user_tenant,
+        notifications=source.notifications or {"enabled": False, "emails": []}
+    )
     
-    sources[user_tenant][source_id] = new_source
-    return new_source
+    db.add(new_source)
+    db.commit()
+    db.refresh(new_source)
+    
+    return {
+        "id": new_source.id,
+        "name": new_source.name,
+        "type": new_source.type,
+        "ip": new_source.ip,
+        "port": new_source.port,
+        "protocol": new_source.protocol,
+        "status": new_source.status,
+        "lastActivity": new_source.last_activity.isoformat() if new_source.last_activity else None,
+        "tenant": new_source.tenant_id,
+        "notifications": new_source.notifications
+    }
 
 @app.put("/api/sources/{source_id}")
-def update_source(source_id: int, source: Source, current=Depends(get_current_user)):
+def update_source(source_id: int, source: Source, current=Depends(get_current_user), db: Session = Depends(get_db)):
     user_tenant = current["tenantId"]
-    tenant_sources = sources.get(user_tenant, {})
     
-    if source_id not in tenant_sources:
+    # Find source
+    db_source = db.query(SourceModel).filter(
+        SourceModel.id == source_id,
+        SourceModel.tenant_id == user_tenant
+    ).first()
+    
+    if not db_source:
         raise HTTPException(status_code=404, detail="Source not found")
     
     # Update source
-    updated_source = {
-        "id": source_id,
-        "name": source.name,
-        "type": source.type,
-        "ip": source.ip,
-        "port": source.port,
-        "protocol": source.protocol,
-        "status": tenant_sources[source_id].get("status", "active"),
-        "lastActivity": tenant_sources[source_id].get("lastActivity", datetime.now().isoformat()),
-        "tenant": user_tenant,
-        "notifications": source.notifications or {"enabled": False, "emails": []}
-    }
+    db_source.name = source.name
+    db_source.type = source.type
+    db_source.ip = source.ip
+    db_source.port = source.port
+    db_source.protocol = source.protocol
+    db_source.notifications = source.notifications or {"enabled": False, "emails": []}
     
-    sources[user_tenant][source_id] = updated_source
-    return updated_source
+    db.commit()
+    db.refresh(db_source)
+    
+    return {
+        "id": db_source.id,
+        "name": db_source.name,
+        "type": db_source.type,
+        "ip": db_source.ip,
+        "port": db_source.port,
+        "protocol": db_source.protocol,
+        "status": db_source.status,
+        "lastActivity": db_source.last_activity.isoformat() if db_source.last_activity else None,
+        "tenant": db_source.tenant_id,
+        "notifications": db_source.notifications
+    }
 
 @app.delete("/api/sources/{source_id}")
-def delete_source(source_id: int, current=Depends(get_current_user)):
+def delete_source(source_id: int, current=Depends(get_current_user), db: Session = Depends(get_db)):
     user_tenant = current["tenantId"]
-    tenant_sources = sources.get(user_tenant, {})
     
-    if source_id not in tenant_sources:
+    # Find source
+    db_source = db.query(SourceModel).filter(
+        SourceModel.id == source_id,
+        SourceModel.tenant_id == user_tenant
+    ).first()
+    
+    if not db_source:
         raise HTTPException(status_code=404, detail="Source not found")
     
-    del sources[user_tenant][source_id]
+    db.delete(db_source)
+    db.commit()
+    
     return {"message": "Source deleted successfully"}
 
 @app.get("/api/notifications")
-def get_notifications(current=Depends(get_current_user)):
+def get_notifications(current=Depends(get_current_user), db: Session = Depends(get_db)):
     user_tenant = current["tenantId"]
-    # Add some mock notifications
-    mock_notifications = [
-        {"id": 1, "message": "High CPU usage detected", "timestamp": "2025-07-12T10:30:00Z", "tenant": user_tenant, "severity": "warning"},
-        {"id": 2, "message": "Suspicious login attempt", "timestamp": "2025-07-12T11:15:00Z", "tenant": user_tenant, "severity": "critical"},
-        {"id": 3, "message": "System backup completed", "timestamp": "2025-07-12T06:00:00Z", "tenant": user_tenant, "severity": "info"}
-    ]
-    return mock_notifications
+    notifications = db.query(NotificationModel).filter(
+        NotificationModel.tenant_id == user_tenant
+    ).order_by(NotificationModel.created_at.desc()).all()
+    
+    return [{
+        "id": notif.id,
+        "message": notif.message,
+        "timestamp": notif.created_at.isoformat() if notif.created_at else None,
+        "tenant": notif.tenant_id,
+        "severity": notif.severity,
+        "isRead": notif.is_read,
+        "metadata": notif.metadata
+    } for notif in notifications]
 
 @app.get("/api/reports")
-def get_reports(current=Depends(get_current_user)):
+def get_reports(current=Depends(get_current_user), db: Session = Depends(get_db)):
     user_tenant = current["tenantId"]
-    # Add some mock reports
-    mock_reports = [
-        {"id": 1, "title": "Security Summary Report", "summary": "Weekly security overview", "tenant": user_tenant, "date": "2025-07-12"},
-        {"id": 2, "title": "Threat Analysis", "summary": "Analysis of recent threats", "tenant": user_tenant, "date": "2025-07-11"}
-    ]
-    return mock_reports
+    reports = db.query(ReportModel).filter(
+        ReportModel.tenant_id == user_tenant
+    ).order_by(ReportModel.created_at.desc()).all()
+    
+    return [{
+        "id": report.id,
+        "title": report.title,
+        "summary": report.summary,
+        "tenant": report.tenant_id,
+        "date": report.created_at.date().isoformat() if report.created_at else None,
+        "type": report.report_type,
+        "generatedBy": report.generated_by,
+        "data": report.data
+    } for report in reports]
 
 # Admin endpoints
 @app.get("/api/admin/tenants")
-def get_all_tenants(current=Depends(get_current_user)):
+def get_all_tenants(current=Depends(get_current_user), db: Session = Depends(get_db)):
     if current["role"] not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     # Super admin can see all tenants
     if current["role"] == "superadmin":
-        return list(tenants.values())
+        tenants = db.query(TenantModel).all()
+    else:
+        # Regular admin can only see their own tenant
+        tenants = db.query(TenantModel).filter(TenantModel.id == current["tenantId"]).all()
     
-    # Regular admin can only see their own tenant
-    user_tenant_id = current["tenantId"]
-    if user_tenant_id in tenants:
-        return [tenants[user_tenant_id]]
-    
-    return []
+    return [{
+        "id": tenant.id,
+        "name": tenant.name,
+        "status": tenant.status,
+        "userCount": tenant.user_count,
+        "description": tenant.description,
+        "createdAt": tenant.created_at.isoformat() if tenant.created_at else None
+    } for tenant in tenants]
 
 @app.post("/api/admin/tenants")
-def create_tenant(tenant_data: dict, current=Depends(get_current_user)):
-    if current["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    tenant_id = tenant_data["name"].lower().replace(" ", "-")
-    if tenant_id in tenants:
-        raise HTTPException(status_code=400, detail="Tenant already exists")
-    
-    tenants[tenant_id] = {
-        "id": tenant_id,
-        "name": tenant_data["name"],
-        "status": "active",
-        "userCount": 0,
-        "description": tenant_data.get("description", "")
-    }
-    
-    return tenants[tenant_id]
-
-@app.get("/api/admin/users")
-def get_all_users(tenantId: str = None, current=Depends(get_current_user)):
+def create_tenant(tenant_data: dict, current=Depends(get_current_user), db: Session = Depends(get_db)):
     if current["role"] not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    # Determine which tenants this admin can access
-    accessible_tenants = []
-    if current["role"] == "superadmin":
-        accessible_tenants = list(tenants.keys())
-    else:
-        # Regular admin can only manage users in their own tenant
-        accessible_tenants = [current["tenantId"]]
+    tenant_id = tenant_data["name"].lower().replace(" ", "-")
     
-    user_list = []
-    for email, user in users.items():
-        # Skip users not in accessible tenants
-        if user["tenantId"] not in accessible_tenants:
-            continue
-            
-        # If specific tenant requested, filter by it
-        if tenantId and user["tenantId"] != tenantId:
-            continue
-            
-        user_info = {
-            "id": email,
-            "name": user["name"],
-            "email": user["email"],
-            "role": user["role"],
-            "tenantId": user["tenantId"],
-            "tenantName": tenants.get(user["tenantId"], {}).get("name", user["tenantId"]),
-            "status": "active"  # Default status
-        }
-        user_list.append(user_info)
+    # Check if tenant already exists
+    existing_tenant = db.query(TenantModel).filter(TenantModel.id == tenant_id).first()
+    if existing_tenant:
+        raise HTTPException(status_code=400, detail="Tenant already exists")
     
-    return user_list
+    # Create new tenant
+    new_tenant = TenantModel(
+        id=tenant_id,
+        name=tenant_data["name"],
+        status="active",
+        user_count=0,
+        description=tenant_data.get("description", "")
+    )
+    
+    db.add(new_tenant)
+    db.commit()
+    db.refresh(new_tenant)
+    
+    return {
+        "id": new_tenant.id,
+        "name": new_tenant.name,
+        "status": new_tenant.status,
+        "userCount": new_tenant.user_count,
+        "description": new_tenant.description
+    }
 
-@app.post("/api/admin/users")
-def create_user(user_data: RegisterRequest, current=Depends(get_current_user)):
-    if current["role"] != "admin":
+@app.get("/api/admin/users")
+def get_all_users(tenantId: str = None, current=Depends(get_current_user), db: Session = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    if user_data.email in users:
+    # Build query based on permissions
+    query = db.query(UserModel)
+    
+    if current["role"] == "superadmin":
+        # Super admin can see all users
+        if tenantId:
+            query = query.filter(UserModel.tenant_id == tenantId)
+    else:
+        # Regular admin can only see users in their own tenant
+        query = query.filter(UserModel.tenant_id == current["tenantId"])
+    
+    users = query.all()
+    
+    return [{
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "tenantId": user.tenant_id,
+        "tenantName": user.tenant.name if user.tenant else user.tenant_id,
+        "status": "active" if user.is_active else "inactive",
+        "createdAt": user.created_at.isoformat() if user.created_at else None
+    } for user in users]
+
+@app.post("/api/admin/users")
+def create_user(user_data: RegisterRequest, current=Depends(get_current_user), db: Session = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if user already exists
+    existing_user = db.query(UserModel).filter(UserModel.email == user_data.email).first()
+    if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
     
+    # Validate tenant access for regular admins
+    if current["role"] == "admin" and user_data.tenant != current["tenantId"]:
+        raise HTTPException(status_code=403, detail="Cannot create users for other tenants")
+    
     # Create user
-    users[user_data.email] = {
-        "email": user_data.email,
-        "password": user_data.password,
-        "name": user_data.name,
-        "tenantId": user_data.tenant,
-        "role": user_data.role,
-        "tenants": [user_data.tenant]
-    }
+    new_user = UserModel(
+        email=user_data.email,
+        password=user_data.password,  # In production, hash this
+        name=user_data.name,
+        tenant_id=user_data.tenant,
+        role=user_data.role,
+        tenants_access=[user_data.tenant]
+    )
+    
+    db.add(new_user)
+    
+    # Update tenant user count
+    tenant = db.query(TenantModel).filter(TenantModel.id == user_data.tenant).first()
+    if tenant:
+        tenant.user_count += 1
+    
+    db.commit()
     
     return {"message": "User created successfully"}
 
@@ -458,6 +495,24 @@ def health_check():
         "version": "1.0.0",
         "timestamp": datetime.now().isoformat()
     }
+
+# Test endpoint to check database
+@app.get("/api/test/users")
+def test_users(db: Session = Depends(get_db)):
+    try:
+        users = db.query(UserModel).all()
+        return {
+            "total_users": len(users),
+            "users": [{
+                "email": user.email,
+                "name": user.name,
+                "tenant_id": user.tenant_id,
+                "role": user.role,
+                "is_active": user.is_active
+            } for user in users]
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 # WebSocket endpoint
 @app.websocket("/ws/notifications")

@@ -112,34 +112,34 @@ src/
 ## 🚀 Quick Start
 
 ### **Prerequisites**
-- Node.js 18+ (recommended: 20+)
-- npm or yarn package manager
-- Docker (optional, for containerized deployment)
+- Docker and Docker Compose
+- Node.js 18+ (for local development)
+- Git
 
-### **Development Setup**
+### **1. Clone Repository**
+```bash
+git clone <repository-url>
+cd BITS-SIEM
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd BITS-SIEM/dashboard
-   ```
+### **2. Start with Docker Compose**
+```bash
+docker-compose up --build
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### **3. Access the Application**
+- **Dashboard**: http://localhost:3000
+- **API Documentation**: http://localhost:8000/docs
+- **PostgreSQL**: localhost:5432
+- **Database**: `siemdb` (auto-initialized with sample data)
 
-3. **Start development server**
-   ```bash
-   npm run dev
-   ```
-   
-   The application will be available at `http://localhost:5173`
-
-4. **Build for production**
-   ```bash
-   npm run build
-   ```
+### **4. Database Initialization**
+The PostgreSQL database is automatically initialized with:
+- **Sample tenants**: Acme Corporation, Beta Industries
+- **Test users**: Admin and regular users for each tenant
+- **Sample sources**: Web servers, databases, firewalls
+- **Notification data**: Security alerts and system messages
+- **Sample reports**: Security summaries and threat analysis
 
 ### **Docker Deployment**
 
@@ -196,10 +196,11 @@ The application includes a custom `nginx.conf` for Single Page Application (SPA)
    - Role assignment by admin
 
 2. **Login Process**
-   - Email/password authentication
-   - Tenant selection (if user has access to multiple tenants)
-   - JWT token generation and storage
-   - Redirect to tenant-specific dashboard
+   1. **Email & Password**: Standard authentication (no tenant selection needed)
+   2. **Auto-Tenant Detection**: Users are automatically logged into their registered organization
+   3. **Role-based Access**: Different permissions based on user role
+   4. **Session Management**: 30-minute timeout with activity tracking
+   5. **Strict Tenant Isolation**: Users can only access their own organization's data
 
 3. **Session Management**
    - Activity-based session renewal

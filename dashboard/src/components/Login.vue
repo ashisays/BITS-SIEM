@@ -73,6 +73,8 @@ const handleLogin = async () => {
       password: credentials.value.password
     })
     
+    console.log('Login successful:', data)
+    
     // Use auth composable to manage session
     setAuth(data.token, data.user, data.user.tenantId)
     
@@ -80,21 +82,14 @@ const handleLogin = async () => {
     router.push(`/tenant/${data.user.tenantId}/dashboard`)
   } catch (err) {
     console.error('Login error:', err)
-    error.value = 'Network error. Please try again.'
     
-    // Mock successful login for development
-    if (credentials.value.email && credentials.value.password) {
-      const mockUser = {
-        id: '1',
-        email: credentials.value.email,
-        name: 'Demo User',
-        tenantId: credentials.value.tenantId || 'acme-corp',
-        role: credentials.value.email.includes('admin') ? 'admin' : 'user'
-      }
-      
-      setAuth('mock-jwt-token', mockUser, mockUser.tenantId)
-      
-      router.push(`/tenant/${mockUser.tenantId}/dashboard`)
+    // Parse error message
+    if (err.message.includes('401')) {
+      error.value = 'Invalid email or password'
+    } else if (err.message.includes('403')) {
+      error.value = 'Access denied'
+    } else {
+      error.value = 'Unable to connect to server. Please try again.'
     }
   } finally {
     isLoading.value = false
