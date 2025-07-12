@@ -26,21 +26,45 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 # In-memory stores for demo - Initialize with sample data
 users = {
-    "admin@demo.com": {
-        "email": "admin@demo.com",
+    "admin@acme.com": {
+        "email": "admin@acme.com",
         "password": "admin123",
-        "name": "Admin User",
+        "name": "Acme Admin",
         "tenantId": "acme-corp",
         "role": "admin",
-        "tenants": ["acme-corp", "beta-industries"]
+        "tenants": ["acme-corp"]
     },
-    "user@demo.com": {
-        "email": "user@demo.com", 
+    "admin@beta.com": {
+        "email": "admin@beta.com",
+        "password": "admin123",
+        "name": "Beta Admin",
+        "tenantId": "beta-industries",
+        "role": "admin",
+        "tenants": ["beta-industries"]
+    },
+    "user@acme.com": {
+        "email": "user@acme.com",
         "password": "user123",
-        "name": "Demo User",
+        "name": "Acme User",
+        "tenantId": "acme-corp",
+        "role": "user",
+        "tenants": ["acme-corp"]
+    },
+    "user@beta.com": {
+        "email": "user@beta.com", 
+        "password": "user123",
+        "name": "Beta User",
         "tenantId": "beta-industries",
         "role": "user",
         "tenants": ["beta-industries"]
+    },
+    "superadmin@system.com": {
+        "email": "superadmin@system.com",
+        "password": "super123",
+        "name": "Super Admin",
+        "tenantId": "acme-corp",
+        "role": "superadmin",
+        "tenants": ["acme-corp", "beta-industries"]
     }
 }
 
@@ -234,9 +258,19 @@ def get_reports(current=Depends(get_current_user)):
 # Admin endpoints
 @app.get("/api/admin/tenants")
 def get_all_tenants(current=Depends(get_current_user)):
-    if current["role"] != "admin":
+    if current["role"] not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
-    return list(tenants.values())
+    
+    # Super admin can see all tenants
+    if current["role"] == "superadmin":
+        return list(tenants.values())
+    
+    # Regular admin can only see their own tenant
+    user_tenant_id = current["tenantId"]
+    if user_tenant_id in tenants:
+        return [tenants[user_tenant_id]]
+    
+    return []
 
 @app.post("/api/admin/tenants")
 def create_tenant(tenant_data: dict, current=Depends(get_current_user)):
@@ -259,11 +293,24 @@ def create_tenant(tenant_data: dict, current=Depends(get_current_user)):
 
 @app.get("/api/admin/users")
 def get_all_users(tenantId: str = None, current=Depends(get_current_user)):
-    if current["role"] != "admin":
+    if current["role"] not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Determine which tenants this admin can access
+    accessible_tenants = []
+    if current["role"] == "superadmin":
+        accessible_tenants = list(tenants.keys())
+    else:
+        # Regular admin can only manage users in their own tenant
+        accessible_tenants = [current["tenantId"]]
     
     user_list = []
     for email, user in users.items():
+        # Skip users not in accessible tenants
+        if user["tenantId"] not in accessible_tenants:
+            continue
+            
+        # If specific tenant requested, filter by it
         if tenantId and user["tenantId"] != tenantId:
             continue
             

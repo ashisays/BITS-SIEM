@@ -131,16 +131,30 @@ function getCurrentTenantId() {
   return null
 }
 
-// Helper function to check if user has admin privileges
+// Helper function to check if user is admin
 function isAdmin() {
   try {
     const userStr = localStorage.getItem('user')
     if (userStr) {
       const user = JSON.parse(userStr)
-      return user.role === 'admin' || user.roles?.includes('admin')
+      return user.role === 'admin' || user.role === 'superadmin' || user.roles?.includes('admin')
     }
   } catch (e) {
     console.error('Error checking admin status:', e)
+  }
+  return false
+}
+
+// Helper function to check if user is superadmin (can access all tenants)
+function isSuperAdmin() {
+  try {
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      return user.role === 'superadmin'
+    }
+  } catch (e) {
+    console.error('Error checking superadmin status:', e)
   }
   return false
 }
@@ -151,12 +165,21 @@ function hasAccessToTenant(tenantId) {
     const userStr = localStorage.getItem('user')
     if (userStr) {
       const user = JSON.parse(userStr)
-      // Admin has access to all tenants
-      if (isAdmin()) return true
-      // Check if user belongs to this tenant
-      return user.tenantId === tenantId || 
-             user.tenants?.includes(tenantId) ||
-             user.accessibleTenants?.includes(tenantId)
+      
+      // Superadmin has access to all tenants
+      if (user.role === 'superadmin') {
+        return true
+      }
+      
+      // Regular users can only access their assigned tenant
+      if (user.tenantId === tenantId) {
+        return true
+      }
+      
+      // Check if user has explicit access to this tenant
+      if (user.tenants?.includes(tenantId)) {
+        return true
+      }
     }
   } catch (e) {
     console.error('Error checking tenant access:', e)
@@ -174,8 +197,11 @@ router.beforeEach((to, from, next) => {
   const isAuthenticated = !!localStorage.getItem('jwt')
   const { requiresAuth, requiresTenant, requiresAdmin } = to.meta
   
+  console.log('Navigation guard:', { path: to.path, requiresAuth, requiresTenant, requiresAdmin, isAuthenticated })
+  
   // Check authentication
   if (requiresAuth && !isAuthenticated) {
+    console.log('Redirecting to login: not authenticated')
     next('/login')
     return
   }
@@ -184,25 +210,44 @@ router.beforeEach((to, from, next) => {
   if (requiresAdmin && !isAdmin()) {
     console.warn('Access denied: Admin privileges required')
     const tenantId = getCurrentTenantId()
-    next(tenantId ? `/tenant/${tenantId}/dashboard` : '/login')
+    if (tenantId) {
+      next(`/tenant/${tenantId}/dashboard`)
+    } else {
+      next('/login')
+    }
     return
   }
   
-  // Check tenant access
+  // Check tenant access for tenant-specific routes
   if (requiresTenant && to.params.tenantId) {
     if (!hasAccessToTenant(to.params.tenantId)) {
       console.warn(`Access denied to tenant: ${to.params.tenantId}`)
-      const userTenantId = getCurrentTenantId()
-      next(userTenantId ? `/tenant/${userTenantId}/dashboard` : '/login')
+      
+      // Get user's default tenant
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr)
+          const defaultTenantId = user.tenantId
+          if (defaultTenantId && defaultTenantId !== to.params.tenantId) {
+            console.log(`Redirecting to user's tenant: ${defaultTenantId}`)
+            next(`/tenant/${defaultTenantId}/dashboard`)
+            return
+          }
+        } catch (e) {
+          console.error('Error parsing user data:', e)
+        }
+      }
+      
+      next('/login')
       return
     }
   }
   
-  // Set current tenant in store/context if accessing tenant route
+  // Set current tenant in context if accessing tenant route
   if (to.params.tenantId) {
-    // You can dispatch to Vuex store or set in composable here
-    // store.dispatch('setCurrentTenant', to.params.tenantId)
     localStorage.setItem('currentTenantId', to.params.tenantId)
+    console.log(`Set current tenant: ${to.params.tenantId}`)
   }
   
   next()

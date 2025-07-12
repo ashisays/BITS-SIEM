@@ -1,5 +1,5 @@
 <template>
-  <nav class="navbar" v-if="isAuthenticated">
+  <nav class="navbar" v-if="shouldShowNavbar">
     <div class="navbar-container">
       <!-- Logo and Brand -->
       <div class="navbar-brand">
@@ -190,6 +190,12 @@ const { isAuthenticated, user, logout: authLogout } = useAuth()
 const showUserMenu = ref(false)
 const showMobileMenu = ref(false)
 const selectedTenantId = ref('')
+
+// Control navbar visibility
+const shouldShowNavbar = computed(() => {
+  const publicRoutes = ['/login', '/register']
+  return isAuthenticated.value && !publicRoutes.includes(route.path)
+})
 
 const currentTenantId = computed(() => {
   return route.params.tenantId || localStorage.getItem('currentTenantId')

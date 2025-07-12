@@ -209,17 +209,34 @@ The application includes a custom `nginx.conf` for Single Page Application (SPA)
 
 ## 🧪 Testing Credentials
 
-### **Demo Admin User**
-- **Email**: `admin@demo.com`
+### **Acme Corporation Admin**
+- **Email**: `admin@acme.com`
 - **Password**: `admin123`
 - **Tenant**: `acme-corp`
-- **Access**: Full admin privileges
+- **Access**: Admin privileges for Acme Corp only
 
-### **Demo Regular User**
-- **Email**: `user@demo.com`
+### **Beta Industries Admin**
+- **Email**: `admin@beta.com`
+- **Password**: `admin123`
+- **Tenant**: `beta-industries`
+- **Access**: Admin privileges for Beta Industries only
+
+### **Acme Corporation User**
+- **Email**: `user@acme.com`
+- **Password**: `user123`
+- **Tenant**: `acme-corp`
+- **Access**: Standard user privileges for Acme Corp
+
+### **Beta Industries User**
+- **Email**: `user@beta.com`
 - **Password**: `user123`
 - **Tenant**: `beta-industries`
-- **Access**: Standard user privileges
+- **Access**: Standard user privileges for Beta Industries
+
+### **Super Administrator**
+- **Email**: `superadmin@system.com`
+- **Password**: `super123`
+- **Access**: Full system admin with access to all tenants
 
 ## 🎨 UI/UX Features
 
