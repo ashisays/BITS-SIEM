@@ -18,7 +18,7 @@ This guide explains how to integrate other services with the BITS-SIEM PostgreSQ
 - **tenants**: Organizations using the SIEM system
 - **users**: User accounts with authentication and roles
 - **sources**: Security data sources (servers, firewalls, etc.)
-- **notifications**: Security alerts and system messages
+- **notifications**: Security alerts and system messages (note: metadata field is named `meta_data` to avoid SQLAlchemy conflicts)
 - **reports**: Generated security reports and analysis
 
 ### Sample Data
@@ -113,6 +113,8 @@ notifications = db.query(Notification).filter(
 
 for notif in notifications:
     print(f"Alert: {notif.message} ({notif.severity})")
+    if notif.meta_data:
+        print(f"  Details: {notif.meta_data}")
 ```
 
 ## 🚀 Service Examples

@@ -93,7 +93,7 @@ if DATABASE_AVAILABLE and Base is not None:
         severity = Column(String, nullable=False, default="info")
         tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
         is_read = Column(Boolean, default=False)
-        metadata = Column(JSON)
+        meta_data = Column(JSON)
         created_at = Column(DateTime, default=datetime.utcnow)
         
         # Relationships
@@ -189,13 +189,13 @@ def init_db():
         
         # Create notifications
         notifications_data = [
-            {"message": "High CPU usage detected on Web Server", "severity": "warning", "tenant_id": "acme-corp", "metadata": {"cpu_usage": "85%"}},
-            {"message": "Suspicious login attempt blocked", "severity": "critical", "tenant_id": "acme-corp", "metadata": {"ip": "192.168.1.50"}},
-            {"message": "System backup completed successfully", "severity": "info", "tenant_id": "acme-corp", "is_read": True, "metadata": {"backup_size": "2.3GB"}},
-            {"message": "Firewall rule updated", "severity": "info", "tenant_id": "beta-industries", "metadata": {"rule_id": "FW-001"}},
-            {"message": "Network intrusion detected", "severity": "critical", "tenant_id": "cisco-systems", "metadata": {"source_ip": "172.16.1.50"}},
-            {"message": "Router configuration backup", "severity": "info", "tenant_id": "cisco-systems", "is_read": True, "metadata": {"device": "IOS-Router-01"}},
-            {"message": "Demo alert - System monitoring", "severity": "info", "tenant_id": "demo-org", "metadata": {"status": "monitoring"}}
+            {"message": "High CPU usage detected on Web Server", "severity": "warning", "tenant_id": "acme-corp", "meta_data": {"cpu_usage": "85%"}},
+            {"message": "Suspicious login attempt blocked", "severity": "critical", "tenant_id": "acme-corp", "meta_data": {"ip": "192.168.1.50"}},
+            {"message": "System backup completed successfully", "severity": "info", "tenant_id": "acme-corp", "is_read": True, "meta_data": {"backup_size": "2.3GB"}},
+            {"message": "Firewall rule updated", "severity": "info", "tenant_id": "beta-industries", "meta_data": {"rule_id": "FW-001"}},
+            {"message": "Network intrusion detected", "severity": "critical", "tenant_id": "cisco-systems", "meta_data": {"source_ip": "172.16.1.50"}},
+            {"message": "Router configuration backup", "severity": "info", "tenant_id": "cisco-systems", "is_read": True, "meta_data": {"device": "IOS-Router-01"}},
+            {"message": "Demo alert - System monitoring", "severity": "info", "tenant_id": "demo-org", "meta_data": {"status": "monitoring"}}
         ]
         
         for notif_data in notifications_data:

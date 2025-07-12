@@ -504,7 +504,7 @@ def get_notifications(current=Depends(get_current_user), db = Depends(get_db)):
             "tenant": notif.tenant_id,
             "severity": notif.severity,
             "isRead": notif.is_read,
-            "metadata": notif.metadata
+            "metadata": notif.meta_data
         } for notif in notifications]
     else:
         # Fallback notifications
