@@ -1,37 +1,60 @@
-import axios from 'axios'
+const BASE_URL = 'http://localhost:8000/api'
 
-const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
-})
-
-api.interceptors.request.use(config => {
+// Helper function to make API requests with authentication
+const makeRequest = async (url, options = {}) => {
   const token = localStorage.getItem('jwt')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
   }
-  return config
-})
+  
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  
+  const response = await fetch(`${BASE_URL}${url}`, {
+    ...options,
+    headers,
+  })
+  
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`)
+  }
+  
+  return response.json()
+}
 
 export default {
   register(data) {
-    return api.post('/register', data)
+    return makeRequest('/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
   },
   login(data) {
-    return api.post('/login', data)
+    return makeRequest('/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
   },
   getSources() {
-    return api.get('/sources')
+    return makeRequest('/sources')
   },
   addSource(source) {
-    return api.post('/sources', source)
+    return makeRequest('/sources', {
+      method: 'POST',
+      body: JSON.stringify(source),
+    })
   },
   deleteSource(id) {
-    return api.delete(`/sources/${id}`)
+    return makeRequest(`/sources/${id}`, {
+      method: 'DELETE',
+    })
   },
   getNotifications() {
-    return api.get('/notifications')
+    return makeRequest('/notifications')
   },
   getReports() {
-    return api.get('/reports')
+    return makeRequest('/reports')
   }
 } 
