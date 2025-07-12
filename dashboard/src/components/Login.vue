@@ -58,8 +58,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
+const { setAuth, clearAuth } = useAuth()
 
 const credentials = ref({
   email: '',
@@ -119,10 +121,8 @@ const handleLogin = async () => {
     if (response.ok) {
       const data = await response.json()
       
-      // Store authentication data
-      localStorage.setItem('jwt', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('currentTenantId', credentials.value.tenantId)
+      // Use auth composable to manage session
+      setAuth(data.token, data.user, credentials.value.tenantId)
       
       // Redirect to tenant dashboard
       router.push(`/tenant/${credentials.value.tenantId}/dashboard`)
@@ -144,9 +144,7 @@ const handleLogin = async () => {
         role: credentials.value.email.includes('admin') ? 'admin' : 'user'
       }
       
-      localStorage.setItem('jwt', 'mock-jwt-token')
-      localStorage.setItem('user', JSON.stringify(mockUser))
-      localStorage.setItem('currentTenantId', mockUser.tenantId)
+      setAuth('mock-jwt-token', mockUser, mockUser.tenantId)
       
       router.push(`/tenant/${mockUser.tenantId}/dashboard`)
     }
@@ -164,9 +162,7 @@ const emailChanged = () => {
 
 onMounted(() => {
   // Clear any existing auth data
-  localStorage.removeItem('jwt')
-  localStorage.removeItem('user')
-  localStorage.removeItem('currentTenantId')
+  clearAuth()
 })
 </script>
 

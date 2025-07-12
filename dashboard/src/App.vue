@@ -1,10 +1,23 @@
 <script setup>
-// Main app component - uses router for navigation
+import { onMounted } from 'vue'
+import NavBar from './components/NavBar.vue'
+import { useAuth } from './composables/useAuth'
+
+const { initializeAuth, checkSessionExpiry } = useAuth()
+
+// Initialize authentication on app startup
+onMounted(() => {
+  initializeAuth()
+  checkSessionExpiry()
+})
 </script>
 
 <template>
   <div id="app">
-    <router-view />
+    <NavBar />
+    <main class="main-content">
+      <router-view />
+    </main>
   </div>
 </template>
 
@@ -84,4 +97,17 @@ body {
 .mb-2 { margin-bottom: 0.5rem; }
 .mb-3 { margin-bottom: 1rem; }
 .mb-4 { margin-bottom: 1.5rem; }
+
+/* Main content layout */
+.main-content {
+  min-height: calc(100vh - 64px); /* Subtract navbar height */
+  background-color: #f8f9fa;
+}
+
+/* Override for login/register pages */
+.main-content:has(.login-container),
+.main-content:has(.register-container) {
+  min-height: 100vh;
+  background: transparent;
+}
 </style>
