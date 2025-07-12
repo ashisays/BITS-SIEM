@@ -5,10 +5,23 @@ from sqlalchemy.sql import func
 import os
 
 # Database URL from environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://siem:siempassword@db:5432/siemdb")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://siem:siempassword@db:5432/siemdb")
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+print(f"Connecting to database: {DATABASE_URL.replace('siempassword', '***')}")
+
+# Create engine with connection pooling and retry logic
+try:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        echo=False  # Set to True for SQL debugging
+    )
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    print("Database engine created successfully")
+except Exception as e:
+    print(f"Failed to create database engine: {e}")
+    raise
 
 Base = declarative_base()
 
