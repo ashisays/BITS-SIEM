@@ -223,41 +223,15 @@ onMounted(() => {
 const loadSources = async () => {
   try {
     loading.value = true
+    console.log('Loading sources from API...')
     const data = await api.getSources()
-    sources.value = data
+    console.log('Sources loaded:', data)
+    sources.value = data || []
   } catch (error) {
     console.error('Error loading sources:', error)
-    // Mock data for development
-    sources.value = [
-      {
-        id: 1,
-        name: 'Web Server',
-        type: 'web-server',
-        ip: '192.168.1.100',
-        port: 80,
-        protocol: 'http',
-        status: 'active',
-        lastActivity: new Date().toISOString(),
-        notifications: {
-          enabled: true,
-          emails: ['admin@acme.com', 'security@acme.com']
-        }
-      },
-      {
-        id: 2,
-        name: 'Firewall',
-        type: 'firewall',
-        ip: '192.168.1.1',
-        port: 514,
-        protocol: 'udp',
-        status: 'warning',
-        lastActivity: new Date(Date.now() - 3600000).toISOString(),
-        notifications: {
-          enabled: true,
-          emails: ['admin@acme.com']
-        }
-      }
-    ]
+    console.error('Full error details:', error.message, error.stack)
+    alert(`Failed to load sources: ${error.message}. Check console for details.`)
+    sources.value = []
   } finally {
     loading.value = false
   }
@@ -294,22 +268,30 @@ const deleteSource = async (source) => {
 const saveSource = async () => {
   try {
     saving.value = true
+    console.log('Saving source:', sourceForm.value)
     
     if (editingSource.value) {
       // Update existing source
+      console.log('Updating source:', editingSource.value.id)
       const updatedSource = await api.updateSource(editingSource.value.id, sourceForm.value)
       const index = sources.value.findIndex(s => s.id === editingSource.value.id)
       sources.value[index] = updatedSource
+      console.log('Source updated successfully')
     } else {
       // Add new source
+      console.log('Adding new source')
       const newSource = await api.addSource(sourceForm.value)
+      console.log('New source added:', newSource)
       sources.value.push(newSource)
     }
     
     closeModal()
+    // Refresh sources to ensure we have the latest data
+    await refreshSources()
   } catch (error) {
     console.error('Error saving source:', error)
-    alert('Error saving source')
+    console.error('Full error details:', error.message, error.stack)
+    alert(`Error saving source: ${error.message}. Check console for details.`)
   } finally {
     saving.value = false
   }
