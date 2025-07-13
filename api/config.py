@@ -104,49 +104,37 @@ class ConfigManager:
         self.debug = os.getenv('DEBUG', 'false').lower() == 'true'
         self.environment = os.getenv('ENVIRONMENT', 'production')
     
-    def generate_tenant_siem_config(self, tenant_id: str, tenant_index: int = None) -> Dict:
+    def generate_tenant_siem_config(self, tenant_id: str, protocol: str = None, syslog_format: str = None) -> Dict:
         """
-        Generate tenant-specific SIEM configuration
-        
+        Generate SIEM configuration for all tenants (same IP/port from env)
         Args:
             tenant_id: Unique tenant identifier
-            tenant_index: Optional index for deterministic IP generation
-            
+            protocol: Optional protocol override (udp, tcp, tls)
+            syslog_format: Optional syslog format override
         Returns:
-            Dictionary with tenant SIEM configuration
+            Dictionary with SIEM configuration
         """
-        if tenant_id in self._tenant_configs:
-            return self._tenant_configs[tenant_id]
-        
-        # Generate deterministic IP based on tenant_id or index
-        if tenant_index is not None:
-            # Use index for predictable IP generation
-            ip_offset = tenant_index
+        # Use env values for all tenants
+        siem_ip = self.siem.base_ip
+        siem_protocol = protocol or self.siem.protocol_default
+        siem_format = syslog_format or self.siem.format_default
+        # Port logic: 514 for UDP, 601 for TCP/TLS (RFC standard)
+        if siem_protocol == 'udp':
+            siem_port = 514
+        elif siem_protocol in ('tcp', 'tls'):
+            siem_port = 601
         else:
-            # Use hash of tenant_id for deterministic but distributed IP generation
-            ip_offset = hash(tenant_id) % 254  # Keep within valid range
-        
-        # Calculate tenant-specific IP
-        base_network = ipaddress.IPv4Network(f"{self.siem.base_ip}/{self.siem.network_mask}", strict=False)
-        tenant_ip = str(base_network.network_address + ip_offset + 1)  # +1 to avoid network address
-        
-        # Calculate tenant-specific port
-        tenant_port = self.siem.base_port + ip_offset
-        
-        # Generate tenant-specific configuration
+            siem_port = self.siem.base_port
         config = {
-            'siem_server_ip': tenant_ip,
-            'siem_server_port': tenant_port,
-            'siem_protocol': self.siem.protocol_default,
-            'syslog_format': self.siem.format_default,
-            'facility': f'local{ip_offset % 8}',  # Use local0-local7
+            'siem_server_ip': siem_ip,
+            'siem_server_port': siem_port,
+            'siem_protocol': siem_protocol,
+            'syslog_format': siem_format,
+            'facility': 'local0',
             'severity': 'info',
             'enabled': True,
-            'setup_instructions': self._generate_setup_instructions(tenant_ip, tenant_port, self.siem.protocol_default, self.siem.format_default)
+            'setup_instructions': self._generate_setup_instructions(siem_ip, siem_port, siem_protocol, siem_format)
         }
-        
-        # Cache the configuration
-        self._tenant_configs[tenant_id] = config
         return config
     
     def _generate_setup_instructions(self, ip: str, port: int, protocol: str, format_type: str) -> str:

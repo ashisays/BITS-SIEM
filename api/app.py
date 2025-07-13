@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Request, Query
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -1291,83 +1291,24 @@ def update_user_status(user_id: str, status_data: dict, current=Depends(get_curr
 
 # Tenant SIEM Configuration endpoints
 @app.get("/api/tenant/config")
-def get_tenant_config(current=Depends(get_current_user), db = Depends(get_db)):
-    """Get SIEM configuration for the current tenant"""
+def get_tenant_config(
+    current=Depends(get_current_user),
+    db=Depends(get_db),
+    protocol: str = Query(None, description="Protocol override (udp, tcp, tls)"),
+    syslog_format: str = Query(None, description="Syslog format override (rfc3164, rfc5424, cisco)")
+):
+    """Get SIEM configuration for the current tenant (same IP/port for all tenants)"""
     user_tenant = current["tenantId"]
     print(f"Getting SIEM config for tenant: {user_tenant}")
-    
-    if DATABASE_AVAILABLE and db:
-        # Database config
-        config = db.query(TenantConfigModel).filter(TenantConfigModel.tenant_id == user_tenant).first()
-        if config:
-            return {
-                "id": config.id,
-                "tenant_id": config.tenant_id,
-                "siem_server_ip": config.siem_server_ip,
-                "siem_server_port": config.siem_server_port,
-                "siem_protocol": config.siem_protocol,
-                "syslog_format": config.syslog_format,
-                "facility": config.facility,
-                "severity": config.severity,
-                "enabled": config.enabled,
-                "setup_instructions": config.setup_instructions,
-                "last_configured": config.last_configured.isoformat() if config.last_configured else None,
-                "created_at": config.created_at.isoformat() if config.created_at else None
-            }
-        else:
-            # Create default config if none exists
-            default_config = TenantConfigModel(
-                tenant_id=user_tenant,
-                siem_server_ip="192.168.1.100",
-                siem_server_port=514,
-                siem_protocol="udp",
-                syslog_format="rfc3164",
-                facility="local0",
-                severity="info",
-                enabled=True,
-                setup_instructions=f"Configure your devices to send syslog to 192.168.1.100:514 using UDP protocol with RFC3164 format."
-            )
-            db.add(default_config)
-            db.commit()
-            db.refresh(default_config)
-            
-            return {
-                "id": default_config.id,
-                "tenant_id": default_config.tenant_id,
-                "siem_server_ip": default_config.siem_server_ip,
-                "siem_server_port": default_config.siem_server_port,
-                "siem_protocol": default_config.siem_protocol,
-                "syslog_format": default_config.syslog_format,
-                "facility": default_config.facility,
-                "severity": default_config.severity,
-                "enabled": default_config.enabled,
-                "setup_instructions": default_config.setup_instructions,
-                "last_configured": default_config.last_configured.isoformat() if default_config.last_configured else None,
-                "created_at": default_config.created_at.isoformat() if default_config.created_at else None
-            }
-    else:
-        # Fallback config using configuration manager
-        tenant_configs = config.get_sample_tenant_configs()
-        
-        if user_tenant in tenant_configs:
-            siem_config = tenant_configs[user_tenant]['siem_config']
-            return {
-                "id": 1,
-                "tenant_id": user_tenant,
-                "last_configured": datetime.now().isoformat(),
-                "created_at": datetime.now().isoformat(),
-                **siem_config
-            }
-        else:
-            # Generate new config for unknown tenant
-            siem_config = config.generate_tenant_siem_config(user_tenant)
-            return {
-                "id": 1,
-                "tenant_id": user_tenant,
-                "last_configured": datetime.now().isoformat(),
-                "created_at": datetime.now().isoformat(),
-                **siem_config
-            }
+    # Always use config manager for SIEM config
+    siem_config = config.generate_tenant_siem_config(user_tenant, protocol=protocol, syslog_format=syslog_format)
+    return {
+        "id": 1,
+        "tenant_id": user_tenant,
+        "last_configured": datetime.now().isoformat(),
+        "created_at": datetime.now().isoformat(),
+        **siem_config
+    }
 
 @app.put("/api/tenant/config")
 def update_tenant_config(config: TenantConfig, current=Depends(get_current_user), db = Depends(get_db)):
