@@ -148,8 +148,12 @@ export default {
   },
   
   // Tenant SIEM Configuration endpoints
-  getTenantConfig() {
-    return makeRequest('/tenant/config')
+  getTenantConfig(syslogFormat = null) {
+    let url = '/tenant/config';
+    if (syslogFormat) {
+      url += `?syslog_format=${encodeURIComponent(syslogFormat)}`;
+    }
+    return makeRequest(url);
   },
   updateTenantConfig(config) {
     return makeRequest('/tenant/config', {

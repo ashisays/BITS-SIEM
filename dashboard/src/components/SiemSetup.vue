@@ -8,107 +8,50 @@
     <!-- Configuration Form -->
     <div class="config-section">
       <h3>SIEM Server Configuration</h3>
-      <form @submit.prevent="saveConfig" class="config-form">
+      <form class="config-form">
         <div class="form-row">
           <div class="form-group">
             <label for="siem_server_ip">SIEM Server IP Address</label>
-            <input 
-              id="siem_server_ip"
-              v-model="config.siem_server_ip" 
-              type="text" 
-              placeholder="192.168.1.100"
-              required 
-            />
+            <input id="siem_server_ip" v-model="config.siem_server_ip" type="text" readonly />
           </div>
           <div class="form-group">
             <label for="siem_server_port">SIEM Server Port</label>
-            <input 
-              id="siem_server_port"
-              v-model.number="config.siem_server_port" 
-              type="number" 
-              min="1" 
-              max="65535"
-              placeholder="514"
-              required 
-            />
+            <input id="siem_server_port" v-model.number="config.siem_server_port" type="number" readonly />
           </div>
         </div>
-
         <div class="form-row">
           <div class="form-group">
             <label for="siem_protocol">Protocol</label>
-            <select id="siem_protocol" v-model="config.siem_protocol" required>
-              <option value="udp">UDP</option>
-              <option value="tcp">TCP</option>
-              <option value="tls">TLS</option>
-            </select>
+            <input id="siem_protocol" v-model="config.siem_protocol" type="text" readonly />
           </div>
           <div class="form-group">
             <label for="syslog_format">Syslog Format</label>
-            <select id="syslog_format" v-model="config.syslog_format" required>
+            <select id="syslog_format" v-model="selectedSyslogFormat" @change="onSyslogFormatChange" required>
               <option value="rfc3164">RFC 3164 (Traditional)</option>
               <option value="rfc5424">RFC 5424 (Modern)</option>
               <option value="cisco">Cisco</option>
             </select>
           </div>
         </div>
-
         <div class="form-row">
           <div class="form-group">
             <label for="facility">Facility</label>
-            <select id="facility" v-model="config.facility">
-              <option value="local0">local0</option>
-              <option value="local1">local1</option>
-              <option value="local2">local2</option>
-              <option value="local3">local3</option>
-              <option value="local4">local4</option>
-              <option value="local5">local5</option>
-              <option value="local6">local6</option>
-              <option value="local7">local7</option>
-            </select>
+            <input id="facility" v-model="config.facility" type="text" readonly />
           </div>
           <div class="form-group">
             <label for="severity">Default Severity</label>
-            <select id="severity" v-model="config.severity">
-              <option value="emerg">Emergency</option>
-              <option value="alert">Alert</option>
-              <option value="crit">Critical</option>
-              <option value="err">Error</option>
-              <option value="warning">Warning</option>
-              <option value="notice">Notice</option>
-              <option value="info">Info</option>
-              <option value="debug">Debug</option>
-            </select>
+            <input id="severity" v-model="config.severity" type="text" readonly />
           </div>
         </div>
-
         <div class="form-group">
           <label for="setup_instructions">Setup Instructions</label>
-          <textarea 
-            id="setup_instructions"
-            v-model="config.setup_instructions" 
-            rows="3"
-            placeholder="Custom setup instructions for your devices..."
-          ></textarea>
+          <textarea id="setup_instructions" v-model="config.setup_instructions" rows="3" readonly></textarea>
         </div>
-
         <div class="form-group checkbox-group">
           <label>
-            <input 
-              type="checkbox" 
-              v-model="config.enabled"
-            />
+            <input type="checkbox" v-model="config.enabled" disabled />
             Enable SIEM Configuration
           </label>
-        </div>
-
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary" :disabled="saving">
-            {{ saving ? 'Saving...' : 'Save Configuration' }}
-          </button>
-          <button type="button" class="btn btn-secondary" @click="loadConfig">
-            Reset
-          </button>
         </div>
       </form>
     </div>
@@ -229,22 +172,16 @@ const config = ref({
   enabled: true,
   setup_instructions: ''
 })
-
+const selectedSyslogFormat = ref('rfc3164')
 const setupGuide = ref(null)
 const loading = ref(false)
-const saving = ref(false)
 const error = ref('')
 
-const loadConfig = async () => {
+const loadConfig = async (format = null) => {
   loading.value = true
   error.value = ''
-  
   try {
-    const [configData, guideData] = await Promise.all([
-      api.getTenantConfig(),
-      api.getSetupGuide()
-    ])
-    
+    const configData = await api.getTenantConfig(format)
     config.value = {
       siem_server_ip: configData.siem_server_ip,
       siem_server_port: configData.siem_server_port,
@@ -255,8 +192,8 @@ const loadConfig = async () => {
       enabled: configData.enabled,
       setup_instructions: configData.setup_instructions || ''
     }
-    
-    setupGuide.value = guideData
+    selectedSyslogFormat.value = configData.syslog_format
+    setupGuide.value = await api.getSetupGuide()
   } catch (err) {
     error.value = 'Failed to load configuration: ' + err.message
   } finally {
@@ -264,22 +201,11 @@ const loadConfig = async () => {
   }
 }
 
-const saveConfig = async () => {
-  saving.value = true
-  error.value = ''
-  
-  try {
-    await api.updateTenantConfig(config.value)
-    await loadConfig() // Reload to get updated data
-    alert('Configuration saved successfully!')
-  } catch (err) {
-    error.value = 'Failed to save configuration: ' + err.message
-  } finally {
-    saving.value = false
-  }
+const onSyslogFormatChange = () => {
+  loadConfig(selectedSyslogFormat.value)
 }
 
-onMounted(loadConfig)
+onMounted(() => loadConfig())
 </script>
 
 <style scoped>
