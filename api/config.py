@@ -249,7 +249,7 @@ class ConfigManager:
         }
         
         for i, (tenant_id, metadata) in enumerate(tenant_metadata.items()):
-            siem_config = self.generate_tenant_siem_config(tenant_id, i)
+            siem_config = self.generate_tenant_siem_config(tenant_id)
             tenant_configs[tenant_id] = {
                 'metadata': metadata,
                 'siem_config': siem_config,
