@@ -12,7 +12,17 @@ from datetime import datetime
 # Configuration
 BASE_URL = "http://localhost:8000/api"
 TEST_EMAIL = "admin@acme.com"
-TEST_PASSWORD = "admin123"
+
+# Get password from configuration manager
+try:
+    from config import config
+    tenant_configs = config.get_sample_tenant_configs()
+    TEST_PASSWORD = tenant_configs['acme-corp']['password']
+    print(f"Using generated password for {TEST_EMAIL}: {TEST_PASSWORD}")
+except ImportError:
+    # Fallback password if config module is not available
+    TEST_PASSWORD = "admin123"
+    print(f"Using fallback password for {TEST_EMAIL}: {TEST_PASSWORD}")
 
 def login():
     """Login and get JWT token"""

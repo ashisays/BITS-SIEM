@@ -29,24 +29,53 @@ BITS-SIEM/
 ## Getting Started
 
 1. **Clone the repository**
-2. **Build and start all services**:
-   ```sh
+
+2. **Generate system configuration**:
+   ```bash
+   python generate_config.py
+   ```
+   This will:
+   - Display all system-generated configurations
+   - Show tenant-specific SIEM server IPs and ports
+   - Generate secure passwords for all users
+   - Create a `.env` file with current settings
+   - Validate the configuration
+
+3. **Build and start all services**:
+   ```bash
    docker-compose up --build
    ```
-3. **Access the services**:
+
+4. **Access the services**:
     - Dashboard: http://localhost:3000
     - API: http://localhost:8000
     - Syslog UDP: localhost:514
     - Database: localhost:5432 (user: siem, password: siempassword, db: siemdb)
 
-4. **Configure SIEM Setup**:
-    - Login to the dashboard
+5. **Login to the dashboard**:
+    Use the generated passwords from step 2:
+    - `admin@acme.com` / `[generated-password]`
+    - `user@acme.com` / `[generated-password]`
+    - `admin@beta.com` / `[generated-password]`
+    - `aspundir@cisco.com` / `[generated-password]`
+    - `admin@demo.com` / `[generated-password]`
+    - `user@demo.com` / `[generated-password]`
+    - `sre@bits.com` / `[generated-password]` (SRE role with access to all tenants)
+
+6. **Configure SIEM Setup**:
     - Navigate to "SIEM Setup" in the navigation
     - Configure your tenant-specific SIEM server settings
     - Follow the setup guide to configure your devices
     - Test connectivity and monitor for events
 
 ## Features
+
+### System-Generated Configuration
+- **Environment-based configuration**: All settings configurable via environment variables
+- **Dynamic IP generation**: Tenant-specific SIEM server IPs generated from base network
+- **Secure password generation**: System-generated secure passwords for all users
+- **Configuration validation**: Automatic validation of all configuration parameters
+- **Flexible deployment**: Easy customization for different environments
 
 ### Multi-tenant SIEM Configuration
 - **Tenant-specific SIEM servers**: Each tenant gets unique IP and port configuration

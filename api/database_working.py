@@ -4,11 +4,12 @@ from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.sql import func
 from datetime import datetime, timedelta
 import os
+from config import config
 
-# Database URL from environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://siem:siempassword@db:5432/siemdb")
+# Database URL from configuration
+DATABASE_URL = config.database.url
 
-print(f"Connecting to database: {DATABASE_URL.replace('siempassword', '***')}")
+print(f"Connecting to database: {DATABASE_URL.replace(config.database.password, '***')}")
 
 # Create engine with connection pooling and retry logic
 try:
@@ -168,26 +169,27 @@ def init_db():
         
         print("Initializing database with sample data...")
         
-        # Create tenants
-        tenants_data = [
-            {"id": "acme-corp", "name": "Acme Corporation", "description": "Technology company"},
-            {"id": "beta-industries", "name": "Beta Industries", "description": "Manufacturing company"},
-            {"id": "cisco-systems", "name": "Cisco Systems", "description": "Networking and cybersecurity company"},
-            {"id": "demo-org", "name": "Demo Organization", "description": "Demo organization for testing"}
-        ]
+        # Get tenant configurations from config manager
+        tenant_configs = config.get_sample_tenant_configs()
         
-        for tenant_data in tenants_data:
-            tenant = Tenant(**tenant_data)
+        # Create tenants
+        for tenant_id, tenant_info in tenant_configs.items():
+            tenant = Tenant(
+                id=tenant_id,
+                name=tenant_info['metadata']['name'],
+                description=tenant_info['metadata']['description']
+            )
             db.add(tenant)
         
-        # Create users
+        # Create users with generated passwords
         users_data = [
-            {"id": "admin@acme.com", "email": "admin@acme.com", "password": "admin123", "name": "Acme Admin", "tenant_id": "acme-corp", "role": "admin", "tenants_access": ["acme-corp"]},
-            {"id": "user@acme.com", "email": "user@acme.com", "password": "user123", "name": "Acme User", "tenant_id": "acme-corp", "role": "user", "tenants_access": ["acme-corp"]},
-            {"id": "admin@beta.com", "email": "admin@beta.com", "password": "admin123", "name": "Beta Admin", "tenant_id": "beta-industries", "role": "admin", "tenants_access": ["beta-industries"]},
-            {"id": "aspundir@cisco.com", "email": "aspundir@cisco.com", "password": "password123", "name": "Aspundir Singh", "tenant_id": "cisco-systems", "role": "admin", "tenants_access": ["cisco-systems"]},
-            {"id": "admin@demo.com", "email": "admin@demo.com", "password": "demo123", "name": "Demo Admin", "tenant_id": "demo-org", "role": "admin", "tenants_access": ["demo-org"]},
-            {"id": "user@demo.com", "email": "user@demo.com", "password": "demo123", "name": "Demo User", "tenant_id": "demo-org", "role": "user", "tenants_access": ["demo-org"]}
+            {"id": "admin@acme.com", "email": "admin@acme.com", "password": tenant_configs['acme-corp']['password'], "name": "Acme Admin", "tenant_id": "acme-corp", "role": "admin", "tenants_access": ["acme-corp"]},
+            {"id": "user@acme.com", "email": "user@acme.com", "password": config.generate_secure_password(12), "name": "Acme User", "tenant_id": "acme-corp", "role": "user", "tenants_access": ["acme-corp"]},
+            {"id": "admin@beta.com", "email": "admin@beta.com", "password": tenant_configs['beta-industries']['password'], "name": "Beta Admin", "tenant_id": "beta-industries", "role": "admin", "tenants_access": ["beta-industries"]},
+            {"id": "aspundir@cisco.com", "email": "aspundir@cisco.com", "password": tenant_configs['cisco-systems']['password'], "name": "Aspundir Singh", "tenant_id": "cisco-systems", "role": "admin", "tenants_access": ["cisco-systems"]},
+            {"id": "admin@demo.com", "email": "admin@demo.com", "password": tenant_configs['demo-org']['password'], "name": "Demo Admin", "tenant_id": "demo-org", "role": "admin", "tenants_access": ["demo-org"]},
+            {"id": "user@demo.com", "email": "user@demo.com", "password": config.generate_secure_password(12), "name": "Demo User", "tenant_id": "demo-org", "role": "user", "tenants_access": ["demo-org"]},
+            {"id": "sre@bits.com", "email": "sre@bits.com", "password": tenant_configs['bits-internal']['password'], "name": "BITS SRE", "tenant_id": "bits-internal", "role": "sre", "tenants_access": ["bits-internal", "acme-corp", "beta-industries", "cisco-systems", "demo-org"]}
         ]
         
         for user_data in users_data:
@@ -236,57 +238,21 @@ def init_db():
             report = Report(**report_data)
             db.add(report)
         
-        # Create tenant SIEM configurations
-        tenant_configs_data = [
-            {
-                "tenant_id": "acme-corp",
-                "siem_server_ip": "192.168.1.10",
-                "siem_server_port": 514,
-                "siem_protocol": "udp",
-                "syslog_format": "rfc3164",
-                "facility": "local0",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your devices to send syslog to 192.168.1.10:514 using UDP protocol with RFC3164 format."
-            },
-            {
-                "tenant_id": "beta-industries",
-                "siem_server_ip": "10.0.1.10",
-                "siem_server_port": 515,
-                "siem_protocol": "udp",
-                "syslog_format": "rfc5424",
-                "facility": "local1",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your devices to send syslog to 10.0.1.10:515 using UDP protocol with RFC5424 format."
-            },
-            {
-                "tenant_id": "cisco-systems",
-                "siem_server_ip": "172.16.1.10",
-                "siem_server_port": 516,
-                "siem_protocol": "tcp",
-                "syslog_format": "cisco",
-                "facility": "local2",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your Cisco devices to send syslog to 172.16.1.10:516 using TCP protocol with Cisco format."
-            },
-            {
-                "tenant_id": "demo-org",
-                "siem_server_ip": "10.0.0.10",
-                "siem_server_port": 517,
-                "siem_protocol": "udp",
-                "syslog_format": "rfc3164",
-                "facility": "local3",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your devices to send syslog to 10.0.0.10:517 using UDP protocol with RFC3164 format."
-            }
-        ]
-        
-        for config_data in tenant_configs_data:
-            config = TenantConfig(**config_data)
-            db.add(config)
+        # Create tenant SIEM configurations using config manager
+        for tenant_id, tenant_info in tenant_configs.items():
+            siem_config = tenant_info['siem_config']
+            config_obj = TenantConfig(
+                tenant_id=tenant_id,
+                siem_server_ip=siem_config['siem_server_ip'],
+                siem_server_port=siem_config['siem_server_port'],
+                siem_protocol=siem_config['siem_protocol'],
+                syslog_format=siem_config['syslog_format'],
+                facility=siem_config['facility'],
+                severity=siem_config['severity'],
+                enabled=siem_config['enabled'],
+                setup_instructions=siem_config['setup_instructions']
+            )
+            db.add(config_obj)
         
         # Commit all changes
         db.commit()

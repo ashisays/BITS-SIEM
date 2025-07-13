@@ -11,6 +11,7 @@ import secrets
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
+from config import config
 
 # Try to import database functionality
 try:
@@ -32,8 +33,8 @@ except Exception as e:
     def get_db(): return None
     def init_db(): return False
 
-SECRET_KEY = "supersecretkey"
-ALGORITHM = "HS256"
+SECRET_KEY = config.security.jwt_secret
+ALGORITHM = config.security.jwt_algorithm
 
 app = FastAPI(title="BITS-SIEM API", version="1.0.0")
 
@@ -89,7 +90,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=config.api.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -131,71 +132,77 @@ async def csrf_middleware(request: Request, call_next):
     return response
 
 # Fallback in-memory data (used when database is not available)
-fallback_users = {
-    "admin@acme.com": {
-        "email": "admin@acme.com",
-        "password": "admin123",
-        "name": "Acme Admin",
-        "tenantId": "acme-corp",
-        "role": "admin",
-        "tenants": ["acme-corp"],
-        "is_active": True
-    },
-    "user@acme.com": {
-        "email": "user@acme.com",
-        "password": "user123",
-        "name": "Acme User",
-        "tenantId": "acme-corp",
-        "role": "user",
-        "tenants": ["acme-corp"],
-        "is_active": True
-    },
-    "admin@beta.com": {
-        "email": "admin@beta.com",
-        "password": "admin123",
-        "name": "Beta Admin",
-        "tenantId": "beta-industries",
-        "role": "admin",
-        "tenants": ["beta-industries"],
-        "is_active": True
-    },
-    "aspundir@cisco.com": {
-        "email": "aspundir@cisco.com",
-        "password": "password123",
-        "name": "Aspundir Singh",
-        "tenantId": "cisco-systems",
-        "role": "admin",
-        "tenants": ["cisco-systems"],
-        "is_active": True
-    },
-    "admin@demo.com": {
-        "email": "admin@demo.com",
-        "password": "demo123",
-        "name": "Demo Admin",
-        "tenantId": "demo-org",
-        "role": "admin",
-        "tenants": ["demo-org"],
-        "is_active": True
-    },
-    "user@demo.com": {
-        "email": "user@demo.com",
-        "password": "demo123",
-        "name": "Demo User",
-        "tenantId": "demo-org",
-        "role": "user",
-        "tenants": ["demo-org"],
-        "is_active": True
-    },
-    "sre@bits.com": {
-        "email": "sre@bits.com",
-        "password": "sre123",
-        "name": "BITS SRE",
-        "tenantId": "bits-internal",
-        "role": "sre",
-        "tenants": ["bits-internal", "acme-corp", "beta-industries", "cisco-systems", "demo-org"],
-        "is_active": True
+def get_fallback_users():
+    """Generate fallback users with system-generated passwords"""
+    tenant_configs = config.get_sample_tenant_configs()
+    
+    return {
+        "admin@acme.com": {
+            "email": "admin@acme.com",
+            "password": tenant_configs['acme-corp']['password'],
+            "name": "Acme Admin",
+            "tenantId": "acme-corp",
+            "role": "admin",
+            "tenants": ["acme-corp"],
+            "is_active": True
+        },
+        "user@acme.com": {
+            "email": "user@acme.com",
+            "password": config.generate_secure_password(12),
+            "name": "Acme User",
+            "tenantId": "acme-corp",
+            "role": "user",
+            "tenants": ["acme-corp"],
+            "is_active": True
+        },
+        "admin@beta.com": {
+            "email": "admin@beta.com",
+            "password": tenant_configs['beta-industries']['password'],
+            "name": "Beta Admin",
+            "tenantId": "beta-industries",
+            "role": "admin",
+            "tenants": ["beta-industries"],
+            "is_active": True
+        },
+        "aspundir@cisco.com": {
+            "email": "aspundir@cisco.com",
+            "password": tenant_configs['cisco-systems']['password'],
+            "name": "Aspundir Singh",
+            "tenantId": "cisco-systems",
+            "role": "admin",
+            "tenants": ["cisco-systems"],
+            "is_active": True
+        },
+        "admin@demo.com": {
+            "email": "admin@demo.com",
+            "password": tenant_configs['demo-org']['password'],
+            "name": "Demo Admin",
+            "tenantId": "demo-org",
+            "role": "admin",
+            "tenants": ["demo-org"],
+            "is_active": True
+        },
+        "user@demo.com": {
+            "email": "user@demo.com",
+            "password": config.generate_secure_password(12),
+            "name": "Demo User",
+            "tenantId": "demo-org",
+            "role": "user",
+            "tenants": ["demo-org"],
+            "is_active": True
+        },
+        "sre@bits.com": {
+            "email": "sre@bits.com",
+            "password": tenant_configs['bits-internal']['password'],
+            "name": "BITS SRE",
+            "tenantId": "bits-internal",
+            "role": "sre",
+            "tenants": ["bits-internal", "acme-corp", "beta-industries", "cisco-systems", "demo-org"],
+            "is_active": True
+        }
     }
-}
+
+fallback_users = get_fallback_users()
 
 fallback_sources = {
     "acme-corp": [
@@ -1339,68 +1346,28 @@ def get_tenant_config(current=Depends(get_current_user), db = Depends(get_db)):
                 "created_at": default_config.created_at.isoformat() if default_config.created_at else None
             }
     else:
-        # Fallback config
-        fallback_configs = {
-            "acme-corp": {
-                "siem_server_ip": "192.168.1.10",
-                "siem_server_port": 514,
-                "siem_protocol": "udp",
-                "syslog_format": "rfc3164",
-                "facility": "local0",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your devices to send syslog to 192.168.1.10:514 using UDP protocol with RFC3164 format."
-            },
-            "beta-industries": {
-                "siem_server_ip": "10.0.1.10",
-                "siem_server_port": 515,
-                "siem_protocol": "udp",
-                "syslog_format": "rfc5424",
-                "facility": "local1",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your devices to send syslog to 10.0.1.10:515 using UDP protocol with RFC5424 format."
-            },
-            "cisco-systems": {
-                "siem_server_ip": "172.16.1.10",
-                "siem_server_port": 516,
-                "siem_protocol": "tcp",
-                "syslog_format": "cisco",
-                "facility": "local2",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your Cisco devices to send syslog to 172.16.1.10:516 using TCP protocol with Cisco format."
-            },
-            "demo-org": {
-                "siem_server_ip": "10.0.0.10",
-                "siem_server_port": 517,
-                "siem_protocol": "udp",
-                "syslog_format": "rfc3164",
-                "facility": "local3",
-                "severity": "info",
-                "enabled": True,
-                "setup_instructions": "Configure your devices to send syslog to 10.0.0.10:517 using UDP protocol with RFC3164 format."
+        # Fallback config using configuration manager
+        tenant_configs = config.get_sample_tenant_configs()
+        
+        if user_tenant in tenant_configs:
+            siem_config = tenant_configs[user_tenant]['siem_config']
+            return {
+                "id": 1,
+                "tenant_id": user_tenant,
+                "last_configured": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat(),
+                **siem_config
             }
-        }
-        
-        config = fallback_configs.get(user_tenant, {
-            "siem_server_ip": "192.168.1.100",
-            "siem_server_port": 514,
-            "siem_protocol": "udp",
-            "syslog_format": "rfc3164",
-            "facility": "local0",
-            "severity": "info",
-            "enabled": True,
-            "setup_instructions": f"Configure your devices to send syslog to 192.168.1.100:514 using UDP protocol with RFC3164 format."
-        })
-        
-        return {
-            "id": 1,
-            "tenant_id": user_tenant,
-            "last_configured": datetime.now().isoformat(),
-            "created_at": datetime.now().isoformat(),
-            **config
-        }
+        else:
+            # Generate new config for unknown tenant
+            siem_config = config.generate_tenant_siem_config(user_tenant)
+            return {
+                "id": 1,
+                "tenant_id": user_tenant,
+                "last_configured": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat(),
+                **siem_config
+            }
 
 @app.put("/api/tenant/config")
 def update_tenant_config(config: TenantConfig, current=Depends(get_current_user), db = Depends(get_db)):

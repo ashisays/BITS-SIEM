@@ -131,23 +131,18 @@ INSERT INTO tenants (id, name, description) VALUES
     ('bits-internal', 'BITS Internal', 'BITS internal monitoring')
 ON CONFLICT (id) DO NOTHING;
 
--- Insert sample tenant configurations
-INSERT INTO tenant_configs (tenant_id, siem_server_ip, siem_server_port, siem_protocol, syslog_format, facility, severity, enabled, setup_instructions) VALUES
-    ('acme-corp', '192.168.1.10', 514, 'udp', 'rfc3164', 'local0', 'info', true, 'Configure your devices to send syslog to 192.168.1.10:514 using UDP protocol with RFC3164 format.'),
-    ('beta-industries', '10.0.1.10', 515, 'udp', 'rfc5424', 'local1', 'info', true, 'Configure your devices to send syslog to 10.0.1.10:515 using UDP protocol with RFC5424 format.'),
-    ('cisco-systems', '172.16.1.10', 516, 'tcp', 'cisco', 'local2', 'info', true, 'Configure your Cisco devices to send syslog to 172.16.1.10:516 using TCP protocol with Cisco format.'),
-    ('demo-org', '10.0.0.10', 517, 'udp', 'rfc3164', 'local3', 'info', true, 'Configure your devices to send syslog to 10.0.0.10:517 using UDP protocol with RFC3164 format.'),
-    ('bits-internal', '192.168.0.10', 518, 'udp', 'rfc3164', 'local4', 'info', true, 'Configure your devices to send syslog to 192.168.0.10:518 using UDP protocol with RFC3164 format.')
-ON CONFLICT (tenant_id) DO NOTHING;
+-- Note: Tenant configurations are now generated dynamically by the application
+-- using the configuration manager based on environment variables.
+-- The actual IP addresses and ports will be generated at runtime.
 
--- Insert sample users
-INSERT INTO users (id, email, password, name, tenant_id, role, tenants_access) VALUES
-    ('admin@acme.com', 'admin123', 'Admin User', 'acme-corp', 'admin', '["acme-corp"]'),
-    ('user@acme.com', 'user123', 'Regular User', 'acme-corp', 'user', '["acme-corp"]'),
-    ('admin@beta.com', 'admin123', 'Beta Admin', 'beta-industries', 'admin', '["beta-industries"]'),
-    ('aspundir@cisco.com', 'password123', 'Aspundir Singh', 'cisco-systems', 'admin', '["cisco-systems"]'),
-    ('sre@bits.com', 'sre123', 'BITS SRE', 'bits-internal', 'sre', '["bits-internal", "acme-corp", "beta-industries", "cisco-systems", "demo-org"]')
-ON CONFLICT (id) DO NOTHING;
+-- Note: User passwords are now generated dynamically by the application
+-- using the configuration manager. The actual passwords will be generated at runtime.
+-- Sample user structure (passwords will be system-generated):
+-- admin@acme.com - Acme Admin (admin role)
+-- user@acme.com - Acme User (user role)  
+-- admin@beta.com - Beta Admin (admin role)
+-- aspundir@cisco.com - Aspundir Singh (admin role)
+-- sre@bits.com - BITS SRE (sre role)
 
 -- Insert sample sources
 INSERT INTO sources (name, type, ip, port, protocol, tenant_id, notifications) VALUES
