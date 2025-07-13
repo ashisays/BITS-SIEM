@@ -1301,6 +1301,11 @@ def get_tenant_config(
     user_tenant = current["tenantId"]
     print(f"Getting SIEM config for tenant: {user_tenant}")
     # Always use config manager for SIEM config
+    # Ensure protocol/syslog_format are strings or None
+    if not isinstance(protocol, str):
+        protocol = None
+    if not isinstance(syslog_format, str):
+        syslog_format = None
     siem_config = config.generate_tenant_siem_config(user_tenant, protocol=protocol, syslog_format=syslog_format)
     return {
         "id": 1,
