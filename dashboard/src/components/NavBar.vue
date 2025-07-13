@@ -49,6 +49,15 @@
             <i class="icon">📋</i>
             Reports
           </router-link>
+          
+          <router-link 
+            :to="`/tenant/${currentTenantId}/setup`" 
+            class="nav-link"
+            active-class="active"
+          >
+            <i class="icon">⚙️</i>
+            SIEM Setup
+          </router-link>
         </div>
 
         <!-- SRE/Admin Links -->
@@ -152,6 +161,14 @@
           @click="closeMobileMenu"
         >
           📋 Reports
+        </router-link>
+        
+        <router-link 
+          :to="`/tenant/${currentTenantId}/setup`" 
+          class="mobile-nav-link"
+          @click="closeMobileMenu"
+        >
+          ⚙️ SIEM Setup
         </router-link>
         
         <div class="mobile-divider" v-if="isSRE"></div>

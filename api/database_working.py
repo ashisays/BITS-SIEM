@@ -48,6 +48,27 @@ if DATABASE_AVAILABLE and Base is not None:
         sources = relationship("Source", back_populates="tenant")
         notifications = relationship("Notification", back_populates="tenant")
         reports = relationship("Report", back_populates="tenant")
+        siem_config = relationship("TenantConfig", back_populates="tenant", uselist=False)
+
+    class TenantConfig(Base):
+        __tablename__ = "tenant_configs"
+        
+        id = Column(Integer, primary_key=True, index=True)
+        tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, unique=True)
+        siem_server_ip = Column(String, nullable=False)
+        siem_server_port = Column(Integer, nullable=False, default=514)
+        siem_protocol = Column(String, nullable=False, default="udp")  # udp, tcp, tls
+        syslog_format = Column(String, nullable=False, default="rfc3164")  # rfc3164, rfc5424, cisco
+        facility = Column(String, default="local0")
+        severity = Column(String, default="info")
+        enabled = Column(Boolean, default=True)
+        setup_instructions = Column(Text)
+        last_configured = Column(DateTime, default=datetime.utcnow)
+        created_at = Column(DateTime, default=datetime.utcnow)
+        updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+        
+        # Relationships
+        tenant = relationship("Tenant", back_populates="siem_config")
 
     class User(Base):
         __tablename__ = "users"
@@ -215,6 +236,58 @@ def init_db():
             report = Report(**report_data)
             db.add(report)
         
+        # Create tenant SIEM configurations
+        tenant_configs_data = [
+            {
+                "tenant_id": "acme-corp",
+                "siem_server_ip": "192.168.1.10",
+                "siem_server_port": 514,
+                "siem_protocol": "udp",
+                "syslog_format": "rfc3164",
+                "facility": "local0",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your devices to send syslog to 192.168.1.10:514 using UDP protocol with RFC3164 format."
+            },
+            {
+                "tenant_id": "beta-industries",
+                "siem_server_ip": "10.0.1.10",
+                "siem_server_port": 515,
+                "siem_protocol": "udp",
+                "syslog_format": "rfc5424",
+                "facility": "local1",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your devices to send syslog to 10.0.1.10:515 using UDP protocol with RFC5424 format."
+            },
+            {
+                "tenant_id": "cisco-systems",
+                "siem_server_ip": "172.16.1.10",
+                "siem_server_port": 516,
+                "siem_protocol": "tcp",
+                "syslog_format": "cisco",
+                "facility": "local2",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your Cisco devices to send syslog to 172.16.1.10:516 using TCP protocol with Cisco format."
+            },
+            {
+                "tenant_id": "demo-org",
+                "siem_server_ip": "10.0.0.10",
+                "siem_server_port": 517,
+                "siem_protocol": "udp",
+                "syslog_format": "rfc3164",
+                "facility": "local3",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your devices to send syslog to 10.0.0.10:517 using UDP protocol with RFC3164 format."
+            }
+        ]
+        
+        for config_data in tenant_configs_data:
+            config = TenantConfig(**config_data)
+            db.add(config)
+        
         # Commit all changes
         db.commit()
         print("Database initialized successfully with sample data")
@@ -239,6 +312,6 @@ def init_db():
 
 # Make models available for import
 if DATABASE_AVAILABLE:
-    __all__ = ["get_db", "init_db", "Tenant", "User", "Source", "Notification", "Report", "DATABASE_AVAILABLE"]
+    __all__ = ["get_db", "init_db", "Tenant", "TenantConfig", "User", "Source", "Notification", "Report", "DATABASE_AVAILABLE"]
 else:
     __all__ = ["get_db", "init_db", "DATABASE_AVAILABLE"]

@@ -6,6 +6,7 @@ import Sources from '../views/Sources.vue'
 import SourceConfig from '../components/SourceConfig.vue'
 import Notifications from '../components/Notifications.vue'
 import DiagnosisReports from '../components/DiagnosisReports.vue'
+import SiemSetup from '../components/SiemSetup.vue'
 
 const routes = [
   // Public routes
@@ -55,6 +56,12 @@ const routes = [
     component: DiagnosisReports,
     meta: { requiresAuth: true, requiresTenant: true }
   },
+  {
+    path: '/tenant/:tenantId/setup',
+    name: 'TenantSetup',
+    component: SiemSetup,
+    meta: { requiresAuth: true, requiresTenant: true }
+  },
   
   // Legacy routes for backward compatibility (redirect to tenant-specific)
   { 
@@ -86,6 +93,14 @@ const routes = [
     redirect: to => {
       const tenantId = getCurrentTenantId()
       return tenantId ? `/tenant/${tenantId}/reports` : '/login'
+    },
+    meta: { requiresAuth: true }
+  },
+  { 
+    path: '/setup', 
+    redirect: to => {
+      const tenantId = getCurrentTenantId()
+      return tenantId ? `/tenant/${tenantId}/setup` : '/login'
     },
     meta: { requiresAuth: true }
   },

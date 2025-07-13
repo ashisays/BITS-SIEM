@@ -17,6 +17,7 @@ try:
     from database_working import (
         get_db, init_db, 
         Tenant as TenantModel, 
+        TenantConfig as TenantConfigModel,
         User as UserModel, 
         Source as SourceModel,
         Notification as NotificationModel,
@@ -275,6 +276,16 @@ class Source(BaseModel):
     port: int
     protocol: str
     notifications: dict = {"enabled": False, "emails": []}
+
+class TenantConfig(BaseModel):
+    siem_server_ip: str
+    siem_server_port: int = 514
+    siem_protocol: str = "udp"  # udp, tcp, tls
+    syslog_format: str = "rfc3164"  # rfc3164, rfc5424, cisco
+    facility: str = "local0"
+    severity: str = "info"
+    enabled: bool = True
+    setup_instructions: str = ""
 
 # JWT token creation
 def create_jwt(user_data):
@@ -1270,6 +1281,304 @@ def update_user_status(user_id: str, status_data: dict, current=Depends(get_curr
         fallback_users[user_id]["is_active"] = new_status == "active"
         
         return {"message": f"User status updated to {new_status}"}
+
+# Tenant SIEM Configuration endpoints
+@app.get("/api/tenant/config")
+def get_tenant_config(current=Depends(get_current_user), db = Depends(get_db)):
+    """Get SIEM configuration for the current tenant"""
+    user_tenant = current["tenantId"]
+    print(f"Getting SIEM config for tenant: {user_tenant}")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database config
+        config = db.query(TenantConfigModel).filter(TenantConfigModel.tenant_id == user_tenant).first()
+        if config:
+            return {
+                "id": config.id,
+                "tenant_id": config.tenant_id,
+                "siem_server_ip": config.siem_server_ip,
+                "siem_server_port": config.siem_server_port,
+                "siem_protocol": config.siem_protocol,
+                "syslog_format": config.syslog_format,
+                "facility": config.facility,
+                "severity": config.severity,
+                "enabled": config.enabled,
+                "setup_instructions": config.setup_instructions,
+                "last_configured": config.last_configured.isoformat() if config.last_configured else None,
+                "created_at": config.created_at.isoformat() if config.created_at else None
+            }
+        else:
+            # Create default config if none exists
+            default_config = TenantConfigModel(
+                tenant_id=user_tenant,
+                siem_server_ip="192.168.1.100",
+                siem_server_port=514,
+                siem_protocol="udp",
+                syslog_format="rfc3164",
+                facility="local0",
+                severity="info",
+                enabled=True,
+                setup_instructions=f"Configure your devices to send syslog to 192.168.1.100:514 using UDP protocol with RFC3164 format."
+            )
+            db.add(default_config)
+            db.commit()
+            db.refresh(default_config)
+            
+            return {
+                "id": default_config.id,
+                "tenant_id": default_config.tenant_id,
+                "siem_server_ip": default_config.siem_server_ip,
+                "siem_server_port": default_config.siem_server_port,
+                "siem_protocol": default_config.siem_protocol,
+                "syslog_format": default_config.syslog_format,
+                "facility": default_config.facility,
+                "severity": default_config.severity,
+                "enabled": default_config.enabled,
+                "setup_instructions": default_config.setup_instructions,
+                "last_configured": default_config.last_configured.isoformat() if default_config.last_configured else None,
+                "created_at": default_config.created_at.isoformat() if default_config.created_at else None
+            }
+    else:
+        # Fallback config
+        fallback_configs = {
+            "acme-corp": {
+                "siem_server_ip": "192.168.1.10",
+                "siem_server_port": 514,
+                "siem_protocol": "udp",
+                "syslog_format": "rfc3164",
+                "facility": "local0",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your devices to send syslog to 192.168.1.10:514 using UDP protocol with RFC3164 format."
+            },
+            "beta-industries": {
+                "siem_server_ip": "10.0.1.10",
+                "siem_server_port": 515,
+                "siem_protocol": "udp",
+                "syslog_format": "rfc5424",
+                "facility": "local1",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your devices to send syslog to 10.0.1.10:515 using UDP protocol with RFC5424 format."
+            },
+            "cisco-systems": {
+                "siem_server_ip": "172.16.1.10",
+                "siem_server_port": 516,
+                "siem_protocol": "tcp",
+                "syslog_format": "cisco",
+                "facility": "local2",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your Cisco devices to send syslog to 172.16.1.10:516 using TCP protocol with Cisco format."
+            },
+            "demo-org": {
+                "siem_server_ip": "10.0.0.10",
+                "siem_server_port": 517,
+                "siem_protocol": "udp",
+                "syslog_format": "rfc3164",
+                "facility": "local3",
+                "severity": "info",
+                "enabled": True,
+                "setup_instructions": "Configure your devices to send syslog to 10.0.0.10:517 using UDP protocol with RFC3164 format."
+            }
+        }
+        
+        config = fallback_configs.get(user_tenant, {
+            "siem_server_ip": "192.168.1.100",
+            "siem_server_port": 514,
+            "siem_protocol": "udp",
+            "syslog_format": "rfc3164",
+            "facility": "local0",
+            "severity": "info",
+            "enabled": True,
+            "setup_instructions": f"Configure your devices to send syslog to 192.168.1.100:514 using UDP protocol with RFC3164 format."
+        })
+        
+        return {
+            "id": 1,
+            "tenant_id": user_tenant,
+            "last_configured": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat(),
+            **config
+        }
+
+@app.put("/api/tenant/config")
+def update_tenant_config(config: TenantConfig, current=Depends(get_current_user), db = Depends(get_db)):
+    """Update SIEM configuration for the current tenant"""
+    user_tenant = current["tenantId"]
+    print(f"Updating SIEM config for tenant: {user_tenant}")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database config update
+        existing_config = db.query(TenantConfigModel).filter(TenantConfigModel.tenant_id == user_tenant).first()
+        
+        if existing_config:
+            # Update existing config
+            existing_config.siem_server_ip = config.siem_server_ip
+            existing_config.siem_server_port = config.siem_server_port
+            existing_config.siem_protocol = config.siem_protocol
+            existing_config.syslog_format = config.syslog_format
+            existing_config.facility = config.facility
+            existing_config.severity = config.severity
+            existing_config.enabled = config.enabled
+            existing_config.setup_instructions = config.setup_instructions
+            existing_config.last_configured = datetime.utcnow()
+        else:
+            # Create new config
+            existing_config = TenantConfigModel(
+                tenant_id=user_tenant,
+                siem_server_ip=config.siem_server_ip,
+                siem_server_port=config.siem_server_port,
+                siem_protocol=config.siem_protocol,
+                syslog_format=config.syslog_format,
+                facility=config.facility,
+                severity=config.severity,
+                enabled=config.enabled,
+                setup_instructions=config.setup_instructions,
+                last_configured=datetime.utcnow()
+            )
+            db.add(existing_config)
+        
+        db.commit()
+        db.refresh(existing_config)
+        
+        return {
+            "id": existing_config.id,
+            "tenant_id": existing_config.tenant_id,
+            "siem_server_ip": existing_config.siem_server_ip,
+            "siem_server_port": existing_config.siem_server_port,
+            "siem_protocol": existing_config.siem_protocol,
+            "syslog_format": existing_config.syslog_format,
+            "facility": existing_config.facility,
+            "severity": existing_config.severity,
+            "enabled": existing_config.enabled,
+            "setup_instructions": existing_config.setup_instructions,
+            "last_configured": existing_config.last_configured.isoformat() if existing_config.last_configured else None,
+            "created_at": existing_config.created_at.isoformat() if existing_config.created_at else None
+        }
+    else:
+        # Fallback config update (in-memory only)
+        return {
+            "id": 1,
+            "tenant_id": user_tenant,
+            "siem_server_ip": config.siem_server_ip,
+            "siem_server_port": config.siem_server_port,
+            "siem_protocol": config.siem_protocol,
+            "syslog_format": config.syslog_format,
+            "facility": config.facility,
+            "severity": config.severity,
+            "enabled": config.enabled,
+            "setup_instructions": config.setup_instructions,
+            "last_configured": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat()
+        }
+
+@app.get("/api/tenant/setup-guide")
+def get_setup_guide(current=Depends(get_current_user), db = Depends(get_db)):
+    """Get comprehensive setup guide for the current tenant"""
+    user_tenant = current["tenantId"]
+    
+    # Get tenant config
+    config_response = get_tenant_config(current, db)
+    
+    setup_guide = {
+        "tenant_id": user_tenant,
+        "siem_config": config_response,
+        "setup_steps": [
+            {
+                "step": 1,
+                "title": "Configure Syslog on Your Devices",
+                "description": "Configure your network devices, servers, and applications to send syslog messages to the SIEM server.",
+                "examples": {
+                    "cisco_ios": f"logging {config_response['siem_server_ip']}",
+                    "cisco_asa": f"logging host inside {config_response['siem_server_ip']} {config_response['siem_protocol']}",
+                    "linux_rsyslog": f"*.* @{config_response['siem_server_ip']}:{config_response['siem_server_port']}",
+                    "windows_eventlog": "Use Windows Event Forwarding or third-party tools",
+                    "firewall": f"Configure syslog output to {config_response['siem_server_ip']}:{config_response['siem_server_port']}"
+                }
+            },
+            {
+                "step": 2,
+                "title": "Verify Connectivity",
+                "description": "Test that your devices can reach the SIEM server and send syslog messages.",
+                "commands": [
+                    f"telnet {config_response['siem_server_ip']} {config_response['siem_server_port']}",
+                    f"nc -u {config_response['siem_server_ip']} {config_response['siem_server_port']}",
+                    f"Test syslog message: echo '<134>Jan 15 10:30:00 testhost testapp: Test message' | nc -u {config_response['siem_server_ip']} {config_response['siem_server_port']}"
+                ]
+            },
+            {
+                "step": 3,
+                "title": "Monitor Dashboard",
+                "description": "Check the SIEM dashboard to verify that events are being received and processed.",
+                "actions": [
+                    "Log into the SIEM dashboard",
+                    "Check the Sources page for active connections",
+                    "Monitor the Notifications page for alerts",
+                    "Review the Dashboard for real-time statistics"
+                ]
+            },
+            {
+                "step": 4,
+                "title": "Configure Alerts",
+                "description": "Set up notification preferences and alert thresholds for your environment.",
+                "settings": [
+                    "Configure email notifications",
+                    "Set up alert severity levels",
+                    "Define custom alert rules",
+                    "Configure notification schedules"
+                ]
+            }
+        ],
+        "supported_formats": [
+            {
+                "name": "RFC 3164",
+                "description": "Traditional syslog format",
+                "example": "<134>Jan 15 10:30:00 testhost testapp: Test message"
+            },
+            {
+                "name": "RFC 5424",
+                "description": "Modern syslog format with structured data",
+                "example": "<134>1 2024-01-15T10:30:00.000Z testhost testapp 12345 - - Test message"
+            },
+            {
+                "name": "Cisco",
+                "description": "Cisco-specific syslog format",
+                "example": "%ASA-6-106100: access-list ACL-INFRA-01 permitted tcp inside/192.168.1.100(12345) -> outside/203.0.113.1(80) hit-cnt 1 first hit [0x12345678, 0x0]"
+            }
+        ],
+        "troubleshooting": [
+            {
+                "issue": "No events received",
+                "solutions": [
+                    "Check network connectivity to SIEM server",
+                    "Verify syslog configuration on source devices",
+                    "Check firewall rules and port access",
+                    "Test with manual syslog message"
+                ]
+            },
+            {
+                "issue": "Events not appearing in dashboard",
+                "solutions": [
+                    "Check tenant configuration",
+                    "Verify source IP mapping to tenant",
+                    "Check processing service status",
+                    "Review system logs"
+                ]
+            },
+            {
+                "issue": "High latency in event processing",
+                "solutions": [
+                    "Check network bandwidth",
+                    "Verify syslog server performance",
+                    "Review processing service configuration",
+                    "Consider load balancing for high volume"
+                ]
+            }
+        ]
+    }
+    
+    return setup_guide
 
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats(current=Depends(get_current_user), db = Depends(get_db)):

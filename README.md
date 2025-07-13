@@ -19,8 +19,8 @@ BITS-SIEM/
 ```
 
 ## Services
-- **dashboard**: Tenant web dashboard for configuration, notifications, and reports.
-- **api**: Backend for user/tenant management and configuration.
+- **dashboard**: Tenant web dashboard for configuration, notifications, reports, and SIEM setup.
+- **api**: Backend for user/tenant management, configuration, and SIEM setup.
 - **ingestion**: Receives syslog data, normalizes, and forwards for processing.
 - **processing**: Real-time analytics and ML-based threat detection (e.g., Apache Flink).
 - **notification**: Sends notifications via web/email.
@@ -34,13 +34,43 @@ BITS-SIEM/
    docker-compose up --build
    ```
 3. **Access the services**:
-   - Dashboard: http://localhost:3000
-   - API: http://localhost:8000
-   - Syslog UDP: localhost:514
-   - Database: localhost:5432 (user: siem, password: siempassword, db: siemdb)
+    - Dashboard: http://localhost:3000
+    - API: http://localhost:8000
+    - Syslog UDP: localhost:514
+    - Database: localhost:5432 (user: siem, password: siempassword, db: siemdb)
+
+4. **Configure SIEM Setup**:
+    - Login to the dashboard
+    - Navigate to "SIEM Setup" in the navigation
+    - Configure your tenant-specific SIEM server settings
+    - Follow the setup guide to configure your devices
+    - Test connectivity and monitor for events
+
+## Features
+
+### Multi-tenant SIEM Configuration
+- **Tenant-specific SIEM servers**: Each tenant gets unique IP and port configuration
+- **Flexible syslog formats**: Support for RFC 3164, RFC 5424, and Cisco formats
+- **Protocol options**: UDP, TCP, and TLS support
+- **Setup guides**: Comprehensive step-by-step instructions for device configuration
+- **Troubleshooting**: Built-in troubleshooting guides and connectivity testing
+
+### Device Configuration Examples
+- **Cisco IOS**: `logging 192.168.1.10`
+- **Cisco ASA**: `logging host inside 192.168.1.10 udp`
+- **Linux rsyslog**: `*.* @192.168.1.10:514`
+- **Windows Event Log**: Windows Event Forwarding configuration
+- **Firewalls**: Generic syslog output configuration
+
+### Security Features
+- **Tenant isolation**: Complete separation of configurations and data
+- **Role-based access**: Admin users can only configure their own tenant
+- **CSRF protection**: Secure state-changing operations
+- **Audit logging**: Complete configuration change tracking
 
 ## Development
 - Each service has its own directory and Dockerfile.
 - Replace the placeholder Dockerfiles and code with your implementation for each service.
+- Test SIEM setup functionality using `python test_siem_setup.py`
 
 ---

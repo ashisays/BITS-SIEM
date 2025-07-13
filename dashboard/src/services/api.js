@@ -145,5 +145,19 @@ export default {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     })
+  },
+  
+  // Tenant SIEM Configuration endpoints
+  getTenantConfig() {
+    return makeRequest('/tenant/config')
+  },
+  updateTenantConfig(config) {
+    return makeRequest('/tenant/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    })
+  },
+  getSetupGuide() {
+    return makeRequest('/tenant/setup-guide')
   }
 } 
