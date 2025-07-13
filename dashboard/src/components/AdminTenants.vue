@@ -272,47 +272,28 @@ const closeModal = () => {
 
 const saveTenant = async () => {
   try {
-    const url = editingTenant.value 
-      ? `/api/admin/tenants/${editingTenant.value.id}`
-      : '/api/admin/tenants'
-    
-    const method = editingTenant.value ? 'PUT' : 'POST'
-    
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('jwt')}`
-      },
-      body: JSON.stringify(tenantForm.value)
-    })
-    
-    if (response.ok) {
-      await fetchTenants()
-      closeModal()
+    if (editingTenant.value) {
+      await api.updateTenant(editingTenant.value.id, tenantForm.value)
+    } else {
+      await api.createTenant(tenantForm.value)
     }
+    
+    await fetchTenants()
+    closeModal()
   } catch (error) {
     console.error('Error saving tenant:', error)
+    alert('Failed to save tenant. Please try again.')
   }
 }
 
 const toggleTenantStatus = async (tenant) => {
   try {
     const newStatus = tenant.status === 'active' ? 'suspended' : 'active'
-    const response = await fetch(`/api/admin/tenants/${tenant.id}/status`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('jwt')}`
-      },
-      body: JSON.stringify({ status: newStatus })
-    })
-    
-    if (response.ok) {
-      tenant.status = newStatus
-    }
+    await api.updateTenantStatus(tenant.id, newStatus)
+    tenant.status = newStatus
   } catch (error) {
     console.error('Error updating tenant status:', error)
+    alert('Failed to update tenant status. Please try again.')
   }
 }
 
@@ -322,18 +303,11 @@ const deleteTenant = async (tenant) => {
   }
   
   try {
-    const response = await fetch(`/api/admin/tenants/${tenant.id}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('jwt')}`
-      }
-    })
-    
-    if (response.ok) {
-      await fetchTenants()
-    }
+    await api.deleteTenant(tenant.id)
+    await fetchTenants()
   } catch (error) {
     console.error('Error deleting tenant:', error)
+    alert('Failed to delete tenant. Please try again.')
   }
 }
 

@@ -5,18 +5,21 @@ import { useRouter } from 'vue-router'
 const isAuthenticated = ref(false)
 const user = ref(null)
 const currentTenantId = ref(null)
+const csrfToken = ref(null)
 
 // Initialize auth state from localStorage
 const initializeAuth = () => {
   const token = localStorage.getItem('jwt')
   const userStr = localStorage.getItem('user')
   const tenantId = localStorage.getItem('currentTenantId')
+  const storedCsrfToken = localStorage.getItem('csrf_token')
   
   if (token && userStr) {
     try {
       isAuthenticated.value = true
       user.value = JSON.parse(userStr)
       currentTenantId.value = tenantId
+      csrfToken.value = storedCsrfToken
     } catch (error) {
       console.error('Error parsing user data:', error)
       clearAuth()
@@ -31,13 +34,15 @@ const clearAuth = () => {
   isAuthenticated.value = false
   user.value = null
   currentTenantId.value = null
+  csrfToken.value = null
   localStorage.removeItem('jwt')
   localStorage.removeItem('user')
   localStorage.removeItem('currentTenantId')
+  localStorage.removeItem('csrf_token')
 }
 
 // Set auth state
-const setAuth = (token, userData, tenantId = null) => {
+const setAuth = (token, userData, tenantId = null, csrf = null) => {
   localStorage.setItem('jwt', token)
   localStorage.setItem('user', JSON.stringify(userData))
   
@@ -46,8 +51,18 @@ const setAuth = (token, userData, tenantId = null) => {
     currentTenantId.value = tenantId
   }
   
+  if (csrf) {
+    localStorage.setItem('csrf_token', csrf)
+    csrfToken.value = csrf
+  }
+  
   isAuthenticated.value = true
   user.value = userData
+}
+
+// Get CSRF token
+const getCsrfToken = () => {
+  return csrfToken.value || localStorage.getItem('csrf_token')
 }
 
 // Update current tenant
@@ -60,8 +75,13 @@ const setCurrentTenant = (tenantId) => {
 const hasAccessToTenant = (tenantId) => {
   if (!user.value) return false
   
-  // Admin has access to all tenants
-  if (user.value.role === 'admin' || user.value.roles?.includes('admin')) {
+  // Superadmin has access to all tenants
+  if (user.value.role === 'superadmin') {
+    return true
+  }
+  
+  // Admin has access to their own tenant
+  if (user.value.role === 'admin' && user.value.tenantId === tenantId) {
     return true
   }
   
@@ -76,15 +96,23 @@ const isAdmin = computed(() => {
   return user.value?.role === 'admin' || user.value?.roles?.includes('admin')
 })
 
+// Check if user is superadmin
+const isSuperAdmin = computed(() => {
+  return user.value?.role === 'superadmin'
+})
+
 // Get user's accessible tenants
 const getUserTenants = () => {
   if (!user.value) return []
   
-  // For admin users, return all tenants (this would come from API in real app)
-  if (isAdmin.value) {
+  // For superadmin users, return all tenants (this would come from API in real app)
+  if (isSuperAdmin.value) {
     return [
       { id: 'acme-corp', name: 'Acme Corporation' },
-      { id: 'beta-industries', name: 'Beta Industries' }
+      { id: 'beta-industries', name: 'Beta Industries' },
+      { id: 'cisco-systems', name: 'Cisco Systems' },
+      { id: 'demo-org', name: 'Demo Organization' },
+      { id: 'bits-internal', name: 'BITS Internal' }
     ]
   }
   
@@ -171,7 +199,9 @@ export function useAuth() {
     isAuthenticated: computed(() => isAuthenticated.value),
     user: computed(() => user.value),
     currentTenantId: computed(() => currentTenantId.value),
+    csrfToken: computed(() => csrfToken.value),
     isAdmin,
+    isSuperAdmin,
     
     // Methods
     setAuth,
@@ -180,6 +210,7 @@ export function useAuth() {
     setCurrentTenant,
     hasAccessToTenant,
     getUserTenants,
+    getCsrfToken,
     initializeAuth,
     checkSessionExpiry,
     trackActivity,

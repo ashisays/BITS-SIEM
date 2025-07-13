@@ -76,7 +76,7 @@ const handleLogin = async () => {
     console.log('Login successful:', data)
     
     // Use auth composable to manage session
-    setAuth(data.token, data.user, data.user.tenantId)
+    setAuth(data.token, data.user, data.user.tenantId, data.csrf_token)
     
     // Redirect to user's tenant dashboard
     router.push(`/tenant/${data.user.tenantId}/dashboard`)

@@ -156,6 +156,9 @@
                 {{ tenant.name }}
               </option>
             </select>
+            <small v-if="userForm.tenantId && !canCreateUsersForTenant(userForm.tenantId)" class="error-text">
+              You can only create users for your own tenant.
+            </small>
           </div>
           <div class="form-group">
             <label>Status</label>
@@ -266,6 +269,12 @@ const canCreateUsers = computed(() => {
   return user.value?.role === 'superadmin' || user.value?.role === 'admin'
 })
 
+const canCreateUsersForTenant = (tenantId) => {
+  if (user.value?.role === 'superadmin') return true
+  if (user.value?.role === 'admin' && tenantId === user.value.tenantId) return true
+  return false
+}
+
 const canEditUser = (targetUser) => {
   if (user.value?.role === 'superadmin') return true
   if (user.value?.role === 'admin' && targetUser.tenantId === user.value.tenantId) return true
@@ -307,18 +316,8 @@ const fetchTenants = async () => {
 
 const fetchUsers = async () => {
   try {
-    const url = selectedTenant.value 
-      ? `/api/admin/users?tenantId=${selectedTenant.value}`
-      : '/api/admin/users'
-    
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('jwt')}`
-      }
-    })
-    if (response.ok) {
-      users.value = await response.json()
-    }
+    const response = await api.getAdminUsers(selectedTenant.value)
+    users.value = response.data || response
   } catch (error) {
     console.error('Error fetching users:', error)
     // Mock data
@@ -407,47 +406,34 @@ const closeModal = () => {
 
 const saveUser = async () => {
   try {
-    const url = editingUser.value 
-      ? `/api/admin/users/${editingUser.value.id}`
-      : '/api/admin/users'
-    
-    const method = editingUser.value ? 'PUT' : 'POST'
-    
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('jwt')}`
-      },
-      body: JSON.stringify(userForm.value)
-    })
-    
-    if (response.ok) {
-      await fetchUsers()
-      closeModal()
+    // Check if user can create/edit users for this tenant
+    if (!canCreateUsersForTenant(userForm.value.tenantId)) {
+      alert('You can only create users for your own tenant.')
+      return
     }
+    
+    if (editingUser.value) {
+      await api.updateUser(editingUser.value.id, userForm.value)
+    } else {
+      await api.createUser(userForm.value)
+    }
+    
+    await fetchUsers()
+    closeModal()
   } catch (error) {
     console.error('Error saving user:', error)
+    alert('Failed to save user. Please try again.')
   }
 }
 
 const toggleUserStatus = async (user) => {
   try {
     const newStatus = user.status === 'active' ? 'suspended' : 'active'
-    const response = await fetch(`/api/admin/users/${user.id}/status`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('jwt')}`
-      },
-      body: JSON.stringify({ status: newStatus })
-    })
-    
-    if (response.ok) {
-      user.status = newStatus
-    }
+    await api.updateUserStatus(user.id, newStatus)
+    user.status = newStatus
   } catch (error) {
     console.error('Error updating user status:', error)
+    alert('Failed to update user status. Please try again.')
   }
 }
 
@@ -457,18 +443,11 @@ const deleteUser = async (user) => {
   }
   
   try {
-    const response = await fetch(`/api/admin/users/${user.id}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('jwt')}`
-      }
-    })
-    
-    if (response.ok) {
-      await fetchUsers()
-    }
+    await api.deleteUser(user.id)
+    await fetchUsers()
   } catch (error) {
     console.error('Error deleting user:', error)
+    alert('Failed to delete user. Please try again.')
   }
 }
 
@@ -870,6 +849,13 @@ onMounted(() => {
   justify-content: flex-end;
   padding-top: 20px;
   border-top: 1px solid #e1e5e9;
+}
+
+.error-text {
+  color: #dc3545;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
 }
 
 @media (max-width: 768px) {

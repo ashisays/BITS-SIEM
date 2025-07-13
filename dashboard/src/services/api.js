@@ -3,6 +3,7 @@ const BASE_URL = 'http://localhost:8000/api'
 // Helper function to make API requests with authentication
 const makeRequest = async (url, options = {}) => {
   const token = localStorage.getItem('jwt')
+  const csrfToken = localStorage.getItem('csrf_token')
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -10,6 +11,11 @@ const makeRequest = async (url, options = {}) => {
   
   if (token) {
     headers.Authorization = `Bearer ${token}`
+  }
+  
+  // Add CSRF token for state-changing operations (POST, PUT, PATCH, DELETE)
+  if (csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method?.toUpperCase())) {
+    headers['X-CSRF-Token'] = csrfToken
   }
   
   const response = await fetch(`${BASE_URL}${url}`, {

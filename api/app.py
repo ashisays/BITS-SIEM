@@ -7,7 +7,10 @@ from pydantic import BaseModel, ValidationError
 from jose import jwt, JWTError
 import time
 import asyncio
+import secrets
+import hashlib
 from datetime import datetime, timedelta
+from typing import Optional
 
 # Try to import database functionality
 try:
@@ -33,6 +36,43 @@ ALGORITHM = "HS256"
 
 app = FastAPI(title="BITS-SIEM API", version="1.0.0")
 
+# CSRF Protection
+class CSRFProtection:
+    def __init__(self):
+        self.csrf_tokens = {}  # In production, use Redis or database
+    
+    def generate_token(self, user_id: str) -> str:
+        """Generate a CSRF token for a user"""
+        token = secrets.token_urlsafe(32)
+        self.csrf_tokens[user_id] = {
+            'token': token,
+            'created_at': datetime.now(),
+            'expires_at': datetime.now() + timedelta(hours=24)
+        }
+        return token
+    
+    def validate_token(self, user_id: str, token: str) -> bool:
+        """Validate a CSRF token"""
+        if user_id not in self.csrf_tokens:
+            return False
+        
+        stored_data = self.csrf_tokens[user_id]
+        
+        # Check if token has expired
+        if datetime.now() > stored_data['expires_at']:
+            del self.csrf_tokens[user_id]
+            return False
+        
+        # Check if token matches
+        return secrets.compare_digest(stored_data['token'], token)
+    
+    def invalidate_token(self, user_id: str):
+        """Invalidate a user's CSRF token"""
+        if user_id in self.csrf_tokens:
+            del self.csrf_tokens[user_id]
+
+csrf_protection = CSRFProtection()
+
 # Validation error handler
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -55,6 +95,39 @@ app.add_middleware(
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+# CSRF middleware
+@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    # Skip CSRF check for GET requests and authentication endpoints
+    if request.method == "GET" or request.url.path.startswith("/api/auth/"):
+        response = await call_next(request)
+        return response
+    
+    # Get user from JWT token
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        response = await call_next(request)
+        return response
+    
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        
+        # Check CSRF token for state-changing operations
+        csrf_token = request.headers.get("X-CSRF-Token")
+        if not csrf_token or not csrf_protection.validate_token(user_id, csrf_token):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Invalid or missing CSRF token"}
+            )
+        
+    except JWTError:
+        pass  # Let the endpoint handle JWT validation
+    
+    response = await call_next(request)
+    return response
 
 # Fallback in-memory data (used when database is not available)
 fallback_users = {
@@ -358,6 +431,9 @@ def login(login_data: LoginRequest, db = Depends(get_db)):
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
         token = create_jwt(user)
+        # Generate CSRF token
+        csrf_token = csrf_protection.generate_token(user.email)
+        
         return {
             "token": token,
             "user": {
@@ -367,7 +443,8 @@ def login(login_data: LoginRequest, db = Depends(get_db)):
                 "tenantId": user.tenant_id,
                 "role": user.role,
                 "tenants": user.tenants_access or [user.tenant_id]
-            }
+            },
+            "csrf_token": csrf_token
         }
     else:
         # Fallback login
@@ -388,6 +465,9 @@ def login(login_data: LoginRequest, db = Depends(get_db)):
             raise HTTPException(status_code=401, detail="Account is inactive")
         
         token = create_jwt(user_data)
+        # Generate CSRF token
+        csrf_token = csrf_protection.generate_token(user_data["email"])
+        
         return {
             "token": token,
             "user": {
@@ -397,7 +477,8 @@ def login(login_data: LoginRequest, db = Depends(get_db)):
                 "tenantId": user_data["tenantId"],
                 "role": user_data["role"],
                 "tenants": user_data["tenants"]
-            }
+            },
+            "csrf_token": csrf_token
         }
 
 # SIEM Data endpoints
@@ -751,31 +832,200 @@ def get_all_tenants(current=Depends(get_current_user), db = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     if DATABASE_AVAILABLE and db:
-        # Database tenants
-        tenants = db.query(TenantModel).all()
+        # Database tenants - filter by access
+        if current["role"] == "superadmin":
+            tenants = db.query(TenantModel).all()
+        else:
+            tenants = db.query(TenantModel).filter(TenantModel.id == current["tenantId"]).all()
+        
         return [{
             "id": tenant.id,
             "name": tenant.name,
             "userCount": tenant.user_count,
             "sourcesCount": tenant.sources_count,
-            "status": tenant.status
+            "status": tenant.status,
+            "createdAt": tenant.created_at.isoformat() if tenant.created_at else None
         } for tenant in tenants]
     else:
-        # Fallback tenants
+        # Fallback tenants - filter by access
+        if current["role"] == "superadmin":
+            tenant_ids = set(user["tenantId"] for user in fallback_users.values())
+        else:
+            tenant_ids = {current["tenantId"]}
+        
         tenants = {}
         for user in fallback_users.values():
             tenant_id = user["tenantId"]
-            if tenant_id not in tenants:
-                tenants[tenant_id] = {
-                    "id": tenant_id,
-                    "name": tenant_id.replace("-", " ").title(),
-                    "userCount": 0,
-                    "sourcesCount": len(fallback_sources.get(tenant_id, [])),
-                    "status": "active"
-                }
-            tenants[tenant_id]["userCount"] += 1
+            if tenant_id in tenant_ids:
+                if tenant_id not in tenants:
+                    tenants[tenant_id] = {
+                        "id": tenant_id,
+                        "name": tenant_id.replace("-", " ").title(),
+                        "userCount": 0,
+                        "sourcesCount": len(fallback_sources.get(tenant_id, [])),
+                        "status": "active",
+                        "createdAt": datetime.now().isoformat()
+                    }
+                tenants[tenant_id]["userCount"] += 1
         
         return list(tenants.values())
+
+@app.post("/api/admin/tenants")
+def create_tenant(tenant_data: dict, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Superadmin access required")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database tenant creation
+        existing_tenant = db.query(TenantModel).filter(TenantModel.id == tenant_data["id"]).first()
+        if existing_tenant:
+            raise HTTPException(status_code=400, detail="Tenant ID already exists")
+        
+        new_tenant = TenantModel(
+            id=tenant_data["id"],
+            name=tenant_data["name"],
+            description=tenant_data.get("description", ""),
+            status=tenant_data.get("status", "active")
+        )
+        db.add(new_tenant)
+        db.commit()
+        db.refresh(new_tenant)
+        
+        return {
+            "id": new_tenant.id,
+            "name": new_tenant.name,
+            "description": new_tenant.description,
+            "status": new_tenant.status
+        }
+    else:
+        # Fallback tenant creation
+        tenant_id = tenant_data["id"]
+        if any(user["tenantId"] == tenant_id for user in fallback_users.values()):
+            raise HTTPException(status_code=400, detail="Tenant ID already exists")
+        
+        # Initialize empty sources for new tenant
+        fallback_sources[tenant_id] = []
+        
+        return {
+            "id": tenant_id,
+            "name": tenant_data["name"],
+            "description": tenant_data.get("description", ""),
+            "status": tenant_data.get("status", "active")
+        }
+
+@app.put("/api/admin/tenants/{tenant_id}")
+def update_tenant(tenant_id: str, tenant_data: dict, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if admin is trying to update different tenant
+    if current["role"] == "admin" and tenant_id != current["tenantId"]:
+        raise HTTPException(status_code=403, detail="You can only update your own tenant")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database tenant update
+        tenant = db.query(TenantModel).filter(TenantModel.id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        tenant.name = tenant_data["name"]
+        tenant.description = tenant_data.get("description", tenant.description)
+        tenant.status = tenant_data.get("status", tenant.status)
+        
+        db.commit()
+        db.refresh(tenant)
+        
+        return {
+            "id": tenant.id,
+            "name": tenant.name,
+            "description": tenant.description,
+            "status": tenant.status
+        }
+    else:
+        # Fallback tenant update
+        if not any(user["tenantId"] == tenant_id for user in fallback_users.values()):
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Update tenant name in user data
+        for user in fallback_users.values():
+            if user["tenantId"] == tenant_id:
+                user["tenantName"] = tenant_data["name"]
+        
+        return {
+            "id": tenant_id,
+            "name": tenant_data["name"],
+            "description": tenant_data.get("description", ""),
+            "status": tenant_data.get("status", "active")
+        }
+
+@app.delete("/api/admin/tenants/{tenant_id}")
+def delete_tenant(tenant_id: str, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Superadmin access required")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database tenant deletion
+        tenant = db.query(TenantModel).filter(TenantModel.id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Delete associated users and sources
+        db.query(UserModel).filter(UserModel.tenant_id == tenant_id).delete()
+        db.query(SourceModel).filter(SourceModel.tenant_id == tenant_id).delete()
+        
+        db.delete(tenant)
+        db.commit()
+        
+        return {"message": "Tenant deleted successfully"}
+    else:
+        # Fallback tenant deletion
+        if not any(user["tenantId"] == tenant_id for user in fallback_users.values()):
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Remove users and sources for this tenant
+        users_to_remove = [email for email, user in fallback_users.items() if user["tenantId"] == tenant_id]
+        for email in users_to_remove:
+            del fallback_users[email]
+        
+        if tenant_id in fallback_sources:
+            del fallback_sources[tenant_id]
+        
+        return {"message": "Tenant deleted successfully"}
+
+@app.patch("/api/admin/tenants/{tenant_id}/status")
+def update_tenant_status(tenant_id: str, status_data: dict, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    new_status = status_data.get("status")
+    if new_status not in ["active", "suspended"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    # Check if admin is trying to update different tenant
+    if current["role"] == "admin" and tenant_id != current["tenantId"]:
+        raise HTTPException(status_code=403, detail="You can only update your own tenant")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database tenant status update
+        tenant = db.query(TenantModel).filter(TenantModel.id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        tenant.status = new_status
+        db.commit()
+        
+        return {"message": f"Tenant status updated to {new_status}"}
+    else:
+        # Fallback tenant status update
+        if not any(user["tenantId"] == tenant_id for user in fallback_users.values()):
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Update status in user data (this is a simplified approach)
+        for user in fallback_users.values():
+            if user["tenantId"] == tenant_id:
+                user["tenantStatus"] = new_status
+        
+        return {"message": f"Tenant status updated to {new_status}"}
 
 @app.get("/api/admin/users")
 def get_all_users(current=Depends(get_current_user), db = Depends(get_db)):
@@ -783,8 +1033,12 @@ def get_all_users(current=Depends(get_current_user), db = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     if DATABASE_AVAILABLE and db:
-        # Database users
-        users = db.query(UserModel).all()
+        # Database users - filter by tenant access
+        if current["role"] == "superadmin":
+            users = db.query(UserModel).all()
+        else:
+            users = db.query(UserModel).filter(UserModel.tenant_id == current["tenantId"]).all()
+        
         return [{
             "id": user.id,
             "name": user.name,
@@ -794,7 +1048,12 @@ def get_all_users(current=Depends(get_current_user), db = Depends(get_db)):
             "isActive": user.is_active
         } for user in users]
     else:
-        # Fallback users
+        # Fallback users - filter by tenant access
+        if current["role"] == "superadmin":
+            user_list = fallback_users.values()
+        else:
+            user_list = [user for user in fallback_users.values() if user["tenantId"] == current["tenantId"]]
+        
         return [
             {
                 "id": user["email"],
@@ -804,10 +1063,214 @@ def get_all_users(current=Depends(get_current_user), db = Depends(get_db)):
                 "role": user["role"],
                 "isActive": user.get("is_active", True)
             }
-            for user in fallback_users.values()
+            for user in user_list
         ]
 
 # Dashboard stats endpoint
+@app.post("/api/admin/users")
+def create_user(user_data: dict, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Validate tenant access
+    if current["role"] == "admin" and user_data.get("tenantId") != current["tenantId"]:
+        raise HTTPException(status_code=403, detail="You can only create users for your own tenant")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database user creation
+        existing_user = db.query(UserModel).filter(UserModel.email == user_data["email"]).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        new_user = UserModel(
+            id=user_data["email"],
+            email=user_data["email"],
+            password=user_data["password"],
+            name=user_data["name"],
+            tenant_id=user_data["tenantId"],
+            role=user_data["role"],
+            is_active=user_data.get("status", "active") == "active"
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        return {
+            "id": new_user.id,
+            "name": new_user.name,
+            "email": new_user.email,
+            "tenantId": new_user.tenant_id,
+            "role": new_user.role,
+            "isActive": new_user.is_active
+        }
+    else:
+        # Fallback user creation
+        if user_data["email"] in fallback_users:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        fallback_users[user_data["email"]] = {
+            "email": user_data["email"],
+            "password": user_data["password"],
+            "name": user_data["name"],
+            "tenantId": user_data["tenantId"],
+            "role": user_data["role"],
+            "tenants": [user_data["tenantId"]],
+            "is_active": user_data.get("status", "active") == "active"
+        }
+        
+        return {
+            "id": user_data["email"],
+            "name": user_data["name"],
+            "email": user_data["email"],
+            "tenantId": user_data["tenantId"],
+            "role": user_data["role"],
+            "isActive": user_data.get("status", "active") == "active"
+        }
+
+@app.put("/api/admin/users/{user_id}")
+def update_user(user_id: str, user_data: dict, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Validate tenant access
+    if current["role"] == "admin" and user_data.get("tenantId") != current["tenantId"]:
+        raise HTTPException(status_code=403, detail="You can only update users in your own tenant")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database user update
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if admin is trying to update user from different tenant
+        if current["role"] == "admin" and user.tenant_id != current["tenantId"]:
+            raise HTTPException(status_code=403, detail="You can only update users in your own tenant")
+        
+        user.name = user_data["name"]
+        user.email = user_data["email"]
+        user.tenant_id = user_data["tenantId"]
+        user.role = user_data["role"]
+        user.is_active = user_data.get("status", "active") == "active"
+        
+        if user_data.get("password"):
+            user.password = user_data["password"]
+        
+        db.commit()
+        db.refresh(user)
+        
+        return {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "tenantId": user.tenant_id,
+            "role": user.role,
+            "isActive": user.is_active
+        }
+    else:
+        # Fallback user update
+        if user_id not in fallback_users:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if admin is trying to update user from different tenant
+        if current["role"] == "admin" and fallback_users[user_id]["tenantId"] != current["tenantId"]:
+            raise HTTPException(status_code=403, detail="You can only update users in your own tenant")
+        
+        fallback_users[user_id].update({
+            "name": user_data["name"],
+            "email": user_data["email"],
+            "tenantId": user_data["tenantId"],
+            "role": user_data["role"],
+            "is_active": user_data.get("status", "active") == "active"
+        })
+        
+        if user_data.get("password"):
+            fallback_users[user_id]["password"] = user_data["password"]
+        
+        return {
+            "id": user_id,
+            "name": user_data["name"],
+            "email": user_data["email"],
+            "tenantId": user_data["tenantId"],
+            "role": user_data["role"],
+            "isActive": user_data.get("status", "active") == "active"
+        }
+
+@app.delete("/api/admin/users/{user_id}")
+def delete_user(user_id: str, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database user deletion
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if admin is trying to delete user from different tenant
+        if current["role"] == "admin" and user.tenant_id != current["tenantId"]:
+            raise HTTPException(status_code=403, detail="You can only delete users in your own tenant")
+        
+        # Prevent admin from deleting themselves
+        if user.email == current["email"]:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        
+        db.delete(user)
+        db.commit()
+        
+        return {"message": "User deleted successfully"}
+    else:
+        # Fallback user deletion
+        if user_id not in fallback_users:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if admin is trying to delete user from different tenant
+        if current["role"] == "admin" and fallback_users[user_id]["tenantId"] != current["tenantId"]:
+            raise HTTPException(status_code=403, detail="You can only delete users in your own tenant")
+        
+        # Prevent admin from deleting themselves
+        if fallback_users[user_id]["email"] == current["email"]:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        
+        del fallback_users[user_id]
+        
+        return {"message": "User deleted successfully"}
+
+@app.patch("/api/admin/users/{user_id}/status")
+def update_user_status(user_id: str, status_data: dict, current=Depends(get_current_user), db = Depends(get_db)):
+    if current["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    new_status = status_data.get("status")
+    if new_status not in ["active", "suspended"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    if DATABASE_AVAILABLE and db:
+        # Database user status update
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if admin is trying to update user from different tenant
+        if current["role"] == "admin" and user.tenant_id != current["tenantId"]:
+            raise HTTPException(status_code=403, detail="You can only update users in your own tenant")
+        
+        user.is_active = new_status == "active"
+        db.commit()
+        
+        return {"message": f"User status updated to {new_status}"}
+    else:
+        # Fallback user status update
+        if user_id not in fallback_users:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if admin is trying to update user from different tenant
+        if current["role"] == "admin" and fallback_users[user_id]["tenantId"] != current["tenantId"]:
+            raise HTTPException(status_code=403, detail="You can only update users in your own tenant")
+        
+        fallback_users[user_id]["is_active"] = new_status == "active"
+        
+        return {"message": f"User status updated to {new_status}"}
+
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats(current=Depends(get_current_user), db = Depends(get_db)):
     user_tenant = current["tenantId"]
