@@ -11,18 +11,22 @@
       <form class="config-form">
         <div class="form-row">
           <div class="form-group">
-            <label for="siem_server_ip">SIEM Server IP Address</label>
-            <input id="siem_server_ip" v-model="config.siem_server_ip" type="text" readonly />
+            <label>SIEM Server IP Address</label>
+            <input :value="config.siem_server_ip" type="text" readonly />
           </div>
           <div class="form-group">
-            <label for="siem_server_port">SIEM Server Port</label>
-            <input id="siem_server_port" v-model.number="config.siem_server_port" type="number" readonly />
+            <label>SIEM Server Port</label>
+            <input :value="config.siem_server_port" type="number" readonly />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label for="siem_protocol">Protocol</label>
-            <input id="siem_protocol" v-model="config.siem_protocol" type="text" readonly />
+            <label>Protocol</label>
+            <div class="protocol-checkboxes">
+              <label><input type="checkbox" value="udp" v-model="selectedProtocols" @change="onProtocolChange" /> UDP</label>
+              <label><input type="checkbox" value="tcp" v-model="selectedProtocols" @change="onProtocolChange" /> TCP</label>
+              <label><input type="checkbox" value="tls" v-model="selectedProtocols" @change="onProtocolChange" /> TLS</label>
+            </div>
           </div>
           <div class="form-group">
             <label for="syslog_format">Syslog Format</label>
@@ -33,24 +37,10 @@
             </select>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="facility">Facility</label>
-            <input id="facility" v-model="config.facility" type="text" readonly />
-          </div>
-          <div class="form-group">
-            <label for="severity">Default Severity</label>
-            <input id="severity" v-model="config.severity" type="text" readonly />
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="setup_instructions">Setup Instructions</label>
-          <textarea id="setup_instructions" v-model="config.setup_instructions" rows="3" readonly></textarea>
-        </div>
         <div class="form-group checkbox-group">
           <label>
-            <input type="checkbox" v-model="config.enabled" disabled />
-            Enable SIEM Configuration
+            <input type="checkbox" v-model="enableSyslog" />
+            Enable Syslog
           </label>
         </div>
       </form>
@@ -173,15 +163,17 @@ const config = ref({
   setup_instructions: ''
 })
 const selectedSyslogFormat = ref('rfc3164')
+const selectedProtocols = ref(['udp'])
+const enableSyslog = ref(true)
 const setupGuide = ref(null)
 const loading = ref(false)
 const error = ref('')
 
-const loadConfig = async (format = null) => {
+const loadConfig = async (format = null, protocol = null) => {
   loading.value = true
   error.value = ''
   try {
-    const configData = await api.getTenantConfig(format)
+    const configData = await api.getTenantConfig(format, protocol)
     config.value = {
       siem_server_ip: configData.siem_server_ip,
       siem_server_port: configData.siem_server_port,
@@ -193,6 +185,8 @@ const loadConfig = async (format = null) => {
       setup_instructions: configData.setup_instructions || ''
     }
     selectedSyslogFormat.value = configData.syslog_format
+    selectedProtocols.value = [configData.siem_protocol]
+    enableSyslog.value = configData.enabled
     setupGuide.value = await api.getSetupGuide()
   } catch (err) {
     error.value = 'Failed to load configuration: ' + err.message
@@ -202,9 +196,15 @@ const loadConfig = async (format = null) => {
 }
 
 const onSyslogFormatChange = () => {
-  loadConfig(selectedSyslogFormat.value)
+  loadConfig(selectedSyslogFormat.value, selectedProtocols.value[0])
 }
-
+const onProtocolChange = () => {
+  // Only allow one protocol at a time for backend compatibility
+  if (selectedProtocols.value.length > 1) {
+    selectedProtocols.value = [selectedProtocols.value[selectedProtocols.value.length - 1]]
+  }
+  loadConfig(selectedSyslogFormat.value, selectedProtocols.value[0])
+}
 onMounted(() => loadConfig())
 </script>
 
