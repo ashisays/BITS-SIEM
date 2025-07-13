@@ -63,8 +63,24 @@ export default {
   getNotifications() {
     return makeRequest('/notifications')
   },
+  markNotificationAsRead(notificationId) {
+    return makeRequest(`/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    })
+  },
+  markAllNotificationsAsRead() {
+    return makeRequest('/notifications/read-all', {
+      method: 'PATCH',
+    })
+  },
   getReports() {
     return makeRequest('/reports')
+  },
+  generateReport(reportType = 'security') {
+    return makeRequest('/reports/generate', {
+      method: 'POST',
+      body: JSON.stringify({ report_type: reportType }),
+    })
   },
   getDashboardStats() {
     return makeRequest('/dashboard/stats')
@@ -80,6 +96,23 @@ export default {
       body: JSON.stringify(tenantData),
     })
   },
+  updateTenant(tenantId, tenantData) {
+    return makeRequest(`/admin/tenants/${tenantId}`, {
+      method: 'PUT',
+      body: JSON.stringify(tenantData),
+    })
+  },
+  deleteTenant(tenantId) {
+    return makeRequest(`/admin/tenants/${tenantId}`, {
+      method: 'DELETE',
+    })
+  },
+  updateTenantStatus(tenantId, status) {
+    return makeRequest(`/admin/tenants/${tenantId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+  },
   getAdminUsers(tenantId = null) {
     const url = tenantId ? `/admin/users?tenantId=${tenantId}` : '/admin/users'
     return makeRequest(url)
@@ -88,6 +121,23 @@ export default {
     return makeRequest('/admin/users', {
       method: 'POST',
       body: JSON.stringify(userData),
+    })
+  },
+  updateUser(userId, userData) {
+    return makeRequest(`/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    })
+  },
+  deleteUser(userId) {
+    return makeRequest(`/admin/users/${userId}`, {
+      method: 'DELETE',
+    })
+  },
+  updateUserStatus(userId, status) {
+    return makeRequest(`/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     })
   }
 } 

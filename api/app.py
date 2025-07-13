@@ -630,6 +630,120 @@ def get_reports(current=Depends(get_current_user), db = Depends(get_db)):
             {"id": 2, "title": "Threat Analysis Report", "summary": "Analysis of recent security threats", "tenant": user_tenant, "date": datetime.now().date().isoformat(), "type": "threat", "generatedBy": "admin", "data": {"threats_detected": 8}}
         ]
 
+@app.patch("/api/notifications/{notification_id}/read")
+def mark_notification_as_read(notification_id: int, current=Depends(get_current_user), db = Depends(get_db)):
+    user_tenant = current["tenantId"]
+    
+    if DATABASE_AVAILABLE and db:
+        # Database notification update
+        notification = db.query(NotificationModel).filter(
+            NotificationModel.id == notification_id,
+            NotificationModel.tenant_id == user_tenant
+        ).first()
+        
+        if notification:
+            notification.is_read = True
+            db.commit()
+            return {"message": "Notification marked as read"}
+        else:
+            raise HTTPException(status_code=404, detail="Notification not found")
+    else:
+        # Fallback - update in-memory data
+        tenant_notifications = fallback_notifications.get(user_tenant, [])
+        for notification in tenant_notifications:
+            if notification["id"] == notification_id:
+                notification["isRead"] = True
+                return {"message": "Notification marked as read"}
+        
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+@app.patch("/api/notifications/read-all")
+def mark_all_notifications_as_read(current=Depends(get_current_user), db = Depends(get_db)):
+    user_tenant = current["tenantId"]
+    
+    if DATABASE_AVAILABLE and db:
+        # Database - mark all notifications as read
+        notifications = db.query(NotificationModel).filter(
+            NotificationModel.tenant_id == user_tenant,
+            NotificationModel.is_read == False
+        ).all()
+        
+        for notification in notifications:
+            notification.is_read = True
+        
+        db.commit()
+        return {"message": f"Marked {len(notifications)} notifications as read"}
+    else:
+        # Fallback - update in-memory data
+        tenant_notifications = fallback_notifications.get(user_tenant, [])
+        count = 0
+        for notification in tenant_notifications:
+            if not notification.get("isRead", False):
+                notification["isRead"] = True
+                count += 1
+        
+        return {"message": f"Marked {count} notifications as read"}
+
+@app.post("/api/reports/generate")
+def generate_report(report_type: str = "security", current=Depends(get_current_user), db = Depends(get_db)):
+    user_tenant = current["tenantId"]
+    
+    # Generate report based on type
+    if report_type == "security":
+        title = "Security Summary Report"
+        summary = "Automated security overview and threat analysis"
+        data = {"total_events": 1250, "threats_detected": 3, "incidents_resolved": 2}
+    elif report_type == "threat":
+        title = "Threat Analysis Report"
+        summary = "Analysis of recent security threats and vulnerabilities"
+        data = {"threats_detected": 8, "high_risk": 2, "medium_risk": 4, "low_risk": 2}
+    elif report_type == "performance":
+        title = "Performance Metrics Report"
+        summary = "System performance and resource utilization analysis"
+        data = {"avg_response_time": "45ms", "uptime": "99.9%", "cpu_usage": "23%"}
+    else:
+        title = "Compliance Report"
+        summary = "Compliance and audit findings"
+        data = {"compliance_score": "95%", "audit_items": 12, "passed_checks": 11}
+    
+    if DATABASE_AVAILABLE and db:
+        # Create report in database
+        new_report = ReportModel(
+            title=title,
+            summary=summary,
+            tenant_id=user_tenant,
+            report_type=report_type,
+            generated_by=current["name"],
+            data=data
+        )
+        db.add(new_report)
+        db.commit()
+        db.refresh(new_report)
+        
+        return {
+            "id": new_report.id,
+            "title": new_report.title,
+            "summary": new_report.summary,
+            "tenant": new_report.tenant_id,
+            "date": new_report.created_at.date().isoformat() if new_report.created_at else None,
+            "type": new_report.report_type,
+            "generatedBy": new_report.generated_by,
+            "data": new_report.data
+        }
+    else:
+        # Fallback - return generated report
+        report_id = len(fallback_reports.get(user_tenant, [])) + 1
+        return {
+            "id": report_id,
+            "title": title,
+            "summary": summary,
+            "tenant": user_tenant,
+            "date": datetime.now().date().isoformat(),
+            "type": report_type,
+            "generatedBy": current["name"],
+            "data": data
+        }
+
 # Admin endpoints
 @app.get("/api/admin/tenants")
 def get_all_tenants(current=Depends(get_current_user), db = Depends(get_db)):
