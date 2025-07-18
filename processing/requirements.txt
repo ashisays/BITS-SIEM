@@ -1,0 +1,57 @@
+# BITS-SIEM Processing Service Requirements
+# Stream processing and threat detection analytics
+
+# Core async framework
+asyncio==3.4.3
+uvloop==0.19.0
+
+# Stream processing
+redis==5.0.1
+kafka-python==2.0.2
+aiokafka==0.9.0
+
+# Database connectivity
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+
+# Data processing and analytics
+pandas==2.1.3
+numpy==1.24.4
+scikit-learn==1.3.2
+
+# Time series processing
+arrow==1.3.0
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Machine learning and anomaly detection
+scipy==1.11.4
+joblib==1.3.2
+
+# Web framework for APIs
+fastapi==0.104.1
+uvicorn==0.24.0
+websockets==12.0
+
+# Monitoring and metrics
+prometheus-client==0.19.0
+structlog==23.2.0
+
+# Configuration management
+pydantic==2.5.0
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# Mathematical operations
+statistics==1.0.3.5
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+httpx==0.25.2
+
+# Development tools
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
