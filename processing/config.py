@@ -194,7 +194,7 @@ class ProcessingConfig:
         if self.stream.backend == "kafka":
             return list(self.kafka.topics.values())
         else:
-            return ["siem:raw_messages", "siem:processed_events"]
+            return ["siem:raw_messages"]
     
     def get_detection_engines(self) -> List[str]:
         """Get list of enabled detection engines"""

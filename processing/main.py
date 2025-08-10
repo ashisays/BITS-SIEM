@@ -138,9 +138,8 @@ class ProcessingService:
             cleanup_task = asyncio.create_task(threat_detector.start_cleanup_task())
             self.tasks.append(cleanup_task)
             
-            # Start main processing loop
-            processing_task = asyncio.create_task(self._processing_loop())
-            self.tasks.append(processing_task)
+            # Note: Stream processor handles message processing via start() method
+            # No additional processing loop needed
             
             # Start health check task
             health_task = asyncio.create_task(self._health_check_loop())
@@ -237,15 +236,13 @@ class ProcessingService:
             
             # Process any detected threats
             if threat_alerts:
+                logger.info(f"🚨 Threat detected! Processing {len(threat_alerts)} alerts for tenant {event.tenant_id}")
                 await self._process_threat_alerts(threat_alerts)
             
-            # Log event processing
-            logger.debug(
-                "Event processed",
-                tenant_id=event.tenant_id,
-                event_type=event.event_type,
-                source_ip=event.source_ip,
-                threats_detected=len(threat_alerts) if threat_alerts else 0
+            # Log event processing with INFO level for debugging
+            logger.info(
+                f"Event processed: tenant={event.tenant_id}, type={event.event_type}, "
+                f"source={event.source_ip}, threats={len(threat_alerts) if threat_alerts else 0}"
             )
             
         except Exception as e:

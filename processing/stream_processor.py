@@ -428,8 +428,13 @@ class MessageProcessor:
             
             base_score = type_scores.get(event_type, 0.1)
             
-            # Adjust based on severity
+            # Adjust based on severity (convert to int if string)
             severity = message.get('severity', 6)
+            try:
+                severity = int(severity)
+            except (ValueError, TypeError):
+                severity = 6  # Default to info level
+            
             if severity <= 2:  # Emergency, Alert, Critical
                 base_score += 0.2
             elif severity <= 4:  # Error, Warning
