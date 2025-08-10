@@ -115,6 +115,9 @@ class MessageProcessor:
             success = db_manager.store_messages_batch(batch)
             
             if success:
+                # Publish messages to Redis streams for processing service
+                await self._publish_to_streams(batch)
+                
                 # Update metrics for successful processing
                 for message in batch:
                     MESSAGES_PROCESSED.labels(
@@ -143,7 +146,40 @@ class MessageProcessor:
             self.stats['database_errors'] += 1
             logger.error(f"Error processing batch: {e}")
     
-    async def flush_remaining_messages(self):
+    async def _publish_to_streams(self, messages):
+        """Publish messages to Redis streams for processing service"""
+        try:
+            # Get Redis client from enricher
+            redis_client = enricher.redis_client
+            if not redis_client:
+                logger.warning("Redis client not available for stream publishing")
+                return
+            
+            # Publish each message to the syslog_events stream
+            for message in messages:
+                # Convert message to dict for stream publishing
+                stream_data = {
+                    'timestamp': message.timestamp.isoformat() if message.timestamp else datetime.utcnow().isoformat(),
+                    'hostname': message.hostname or 'unknown',
+                    'program': message.program or 'unknown',
+                    'message': message.message or '',
+                    'facility': str(message.facility) if message.facility is not None else '16',
+                    'severity': str(message.severity) if message.severity is not None else '6',
+                    'tenant_id': message.tenant_id or 'demo-org',
+                    'source_ip': message.source_ip or 'unknown',
+                    'event_type': 'syslog',
+                    'raw_message': message.raw_message or ''
+                }
+                
+                # Add to Redis stream (matching processing service expectation)
+                redis_client.xadd('siem:raw_messages', stream_data)
+            
+            logger.debug(f"Published {len(messages)} messages to Redis streams")
+            
+        except Exception as e:
+            logger.error(f"Failed to publish messages to Redis streams: {e}")
+    
+    async def flush(self):
         """Flush any remaining messages in the queue"""
         async with self.processing_lock:
             if self.batch_queue:
@@ -222,7 +258,7 @@ class IngestionService:
             await self.listener_manager.stop_all()
             
             # Flush remaining messages
-            await self.processor.flush_remaining_messages()
+            await self.processor.flush()
             
             # Close enricher connections
             enricher.close()
@@ -240,7 +276,7 @@ class IngestionService:
         while self.running:
             try:
                 await asyncio.sleep(config.batch_timeout)
-                await self.processor.flush_remaining_messages()
+                await self.processor.flush()
             except asyncio.CancelledError:
                 break
             except Exception as e:

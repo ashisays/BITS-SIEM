@@ -195,13 +195,16 @@ class RedisStreamBackend(StreamBackend):
         try:
             message_data = json.dumps(message)
             
+            from functools import partial
             await asyncio.get_event_loop().run_in_executor(
                 None,
-                self.redis_client.xadd,
-                topic,
-                {'data': message_data},
-                maxlen=10000,  # Keep only last 10k messages
-                approximate=True
+                partial(
+                    self.redis_client.xadd,
+                    topic,
+                    {'data': message_data},
+                    maxlen=10000,  # Keep only last 10k messages
+                    approximate=True
+                )
             )
             
             self.stats['messages_produced'] += 1
@@ -555,8 +558,8 @@ class StreamProcessor:
                     event = await self.message_processor.process_message(raw_message)
                     
                     if event:
-                        # Pass to event handler (threat detection)
-                        await event_handler(event)
+                        # Pass to event handler (threat detection) - wrap single event in list
+                        await event_handler([event])
                         
                         # Produce processed event
                         await self.backend.produce_message(
