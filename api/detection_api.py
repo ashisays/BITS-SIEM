@@ -145,7 +145,7 @@ async def ingest_authentication_event(
             'login_duration': event.login_duration,
             'failed_attempts_count': event.failed_attempts_count,
             'time_since_last_attempt': event.time_since_last_attempt,
-            'metadata': event.metadata
+            'metadata': event.event_metadata
         }
         
         # Process event and generate alerts
@@ -199,7 +199,7 @@ async def batch_ingest_authentication_events(
                 'login_duration': event.login_duration,
                 'failed_attempts_count': event.failed_attempts_count,
                 'time_since_last_attempt': event.time_since_last_attempt,
-                'metadata': event.metadata
+                'metadata': event.event_metadata
             }
             
             alerts = detection_engine.process_authentication_event(event_data)

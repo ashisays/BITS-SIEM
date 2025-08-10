@@ -67,6 +67,12 @@ class AlertConfig:
     websocket_port: int
     email_notifications: bool
     alert_cooldown: int
+    correlation_window: int
+    max_correlation_distance: float
+    notification_channels: list
+    rate_limit_window: int
+    max_notifications_per_window: int
+    default_cooldown: int
 
 @dataclass
 class MLConfig:
@@ -150,7 +156,13 @@ class ProcessingConfig:
             websocket_enabled=os.getenv("WEBSOCKET_ENABLED", "true").lower() == "true",
             websocket_port=int(os.getenv("WEBSOCKET_PORT", "8002")),
             email_notifications=os.getenv("EMAIL_NOTIFICATIONS", "true").lower() == "true",
-            alert_cooldown=int(os.getenv("ALERT_COOLDOWN", "300"))  # 5 minutes
+            alert_cooldown=int(os.getenv("ALERT_COOLDOWN", "300")),  # 5 minutes
+            correlation_window=int(os.getenv("ALERT_CORRELATION_WINDOW", "3600")),  # 1 hour
+            max_correlation_distance=float(os.getenv("MAX_CORRELATION_DISTANCE", "0.8")),
+            notification_channels=os.getenv("NOTIFICATION_CHANNELS", "email,webhook").split(","),
+            rate_limit_window=int(os.getenv("RATE_LIMIT_WINDOW", "300")),  # 5 minutes
+            max_notifications_per_window=int(os.getenv("MAX_NOTIFICATIONS_PER_WINDOW", "10")),
+            default_cooldown=int(os.getenv("DEFAULT_COOLDOWN", "300"))  # 5 minutes
         )
         
         # Machine learning configuration

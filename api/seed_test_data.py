@@ -90,7 +90,7 @@ def seed_normal_activity(db, tenant_id: str, user: User, days: int = 14) -> None
                 login_duration=randint(30, 600),
                 failed_attempts_count=0,
                 time_since_last_attempt=randint(60, 600),
-                metadata={"method": "password"},
+                event_metadata={"method": "password"},
                 timestamp=ts,
             )
             db.add(evt)
@@ -113,7 +113,7 @@ def seed_normal_activity(db, tenant_id: str, user: User, days: int = 14) -> None
                 login_duration=0,
                 failed_attempts_count=1,
                 time_since_last_attempt=None,
-                metadata={"reason": "bad_password"},
+                event_metadata={"reason": "bad_password"},
                 timestamp=tsf,
             ))
     db.commit()
@@ -141,7 +141,7 @@ def seed_bruteforce_burst(db, tenant_id: str, user: User, failures: int = 6) -> 
             login_duration=0,
             failed_attempts_count=i + 1,
             time_since_last_attempt=30 if i else None,
-            metadata={"reason": "bad_password", "burst": True},
+            event_metadata={"reason": "bad_password", "burst": True},
             timestamp=ts,
         ))
     # Optional suspicious success after failures
@@ -162,7 +162,7 @@ def seed_bruteforce_burst(db, tenant_id: str, user: User, failures: int = 6) -> 
         login_duration=60,
         failed_attempts_count=0,
         time_since_last_attempt=60,
-        metadata={"note": "success-after-failures"},
+        event_metadata={"note": "success-after-failures"},
         timestamp=success_ts,
     ))
     db.commit()
@@ -190,7 +190,7 @@ def seed_distributed_failures(db, tenant_id: str, user: User, total_failures: in
             login_duration=0,
             failed_attempts_count=1,
             time_since_last_attempt=40 if i else None,
-            metadata={"reason": "bad_password", "distributed": True},
+            event_metadata={"reason": "bad_password", "distributed": True},
             timestamp=ts,
         ))
     db.commit()

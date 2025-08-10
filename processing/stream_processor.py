@@ -132,14 +132,17 @@ class RedisStreamBackend(StreamBackend):
                     # Read messages from all topics
                     streams = {topic: '>' for topic in topics}
                     
+                    from functools import partial
                     messages = await asyncio.get_event_loop().run_in_executor(
                         None,
-                        self.redis_client.xreadgroup,
-                        self.consumer_group,
-                        self.consumer_name,
-                        streams,
-                        count=config.stream.batch_size,
-                        block=int(config.stream.batch_timeout * 1000)
+                        partial(
+                            self.redis_client.xreadgroup,
+                            self.consumer_group,
+                            self.consumer_name,
+                            streams,
+                            count=config.stream.batch_size,
+                            block=int(config.stream.batch_timeout * 1000)
+                        )
                     )
                     
                     if messages:

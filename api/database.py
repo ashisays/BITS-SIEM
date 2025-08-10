@@ -147,7 +147,7 @@ if DATABASE_AVAILABLE and Base is not None:
         time_since_last_attempt = Column(Integer)  # seconds
         
         # Metadata
-        metadata = Column(JSON)
+        event_metadata = Column("metadata", JSON)
         timestamp = Column(DateTime, default=datetime.utcnow, index=True)
         
         # Relationships
@@ -305,7 +305,7 @@ if DATABASE_AVAILABLE and Base is not None:
         # Analysis results
         pattern_type = Column(String)  # sequential, parallel, distributed
         risk_score = Column(Float)  # 0.0 to 1.0
-        metadata = Column(JSON)
+        event_metadata = Column("metadata", JSON)
         
         # Timestamps
         first_event_time = Column(DateTime, nullable=False)

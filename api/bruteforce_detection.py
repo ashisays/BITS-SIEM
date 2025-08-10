@@ -292,7 +292,7 @@ class CorrelationEngine:
                     risk_score=min(1.0, (len(failed_events) * len(source_types)) / 20.0),
                     first_event_time=min(e.timestamp for e in events),
                     last_event_time=max(e.timestamp for e in events),
-                    metadata={
+                    event_metadata={
                         'unique_users': len(usernames),
                         'failure_rate': len(failed_events) / len(events),
                         'source_diversity': len(source_types)
@@ -335,7 +335,7 @@ class CorrelationEngine:
                     risk_score=min(1.0, (len(failed_events) * len(ips)) / 25.0),
                     first_event_time=min(e.timestamp for e in events),
                     last_event_time=max(e.timestamp for e in events),
-                    metadata={
+                    event_metadata={
                         'unique_ips': len(ips),
                         'failure_rate': len(failed_events) / len(events),
                         'geographic_spread': len(set(e.country for e in events if e.country))
@@ -452,7 +452,7 @@ class AlertEngine:
                     'correlation_id': correlation.correlation_id,
                     'pattern_type': correlation.pattern_type,
                     'time_window': correlation.time_window,
-                    'metadata': correlation.metadata
+                    'metadata': correlation.event_metadata
                 }
             )
             
@@ -497,7 +497,7 @@ class BruteForceDetectionEngine:
                 login_duration=event_data.get('login_duration'),
                 failed_attempts_count=event_data.get('failed_attempts_count', 0),
                 time_since_last_attempt=event_data.get('time_since_last_attempt'),
-                metadata=event_data.get('metadata', {}),
+                event_metadata=event_data.get('metadata', {}),
                 timestamp=datetime.utcnow()
             )
             

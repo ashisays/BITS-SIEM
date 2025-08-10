@@ -103,9 +103,8 @@ class ProcessingService:
             # Initialize threat detection manager
             threat_detector.stats['start_time'] = datetime.utcnow()
             
-            # Initialize alert manager
-            if hasattr(alert_manager, '_init_redis'):
-                asyncio.create_task(alert_manager._init_redis())
+            # Initialize alert manager (will be done in async context)
+            # Redis initialization will happen when the event loop starts
             
             logger.info("Processing service components initialized")
             
@@ -120,11 +119,19 @@ class ProcessingService:
             logger.info("Starting BITS-SIEM Processing Service")
             
             # Start Prometheus metrics server
-            start_http_server(config.monitoring.metrics_port)
-            logger.info(f"Metrics server started on port {config.monitoring.metrics_port}")
+            start_http_server(config.metrics_port)
+            logger.info(f"Metrics server started on port {config.metrics_port}")
+            
+            # Initialize alert manager
+            await alert_manager.initialize()
+            logger.info("Alert manager initialized")
+            
+            # Initialize stream processor
+            await self.stream_processor.initialize()
+            logger.info("Stream processor initialized")
             
             # Start stream processor
-            await self.stream_processor.start()
+            await self.stream_processor.start(self._process_events)
             logger.info("Stream processor started")
             
             # Start threat detection cleanup task
@@ -456,8 +463,9 @@ async def main():
 
 if __name__ == "__main__":
     # Configure logging level
+    log_level = getattr(config, 'log_level', 'INFO')
     logging.basicConfig(
-        level=getattr(logging, config.logging.level.upper()),
+        level=getattr(logging, log_level.upper()),
         format='%(message)s'
     )
     

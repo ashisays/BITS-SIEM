@@ -126,7 +126,7 @@ class AlertModel(Base):
     risk_score = Column(Float, nullable=False)
     confidence = Column(Float, nullable=False)
     evidence = Column(JSON, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    alert_metadata = Column("metadata", JSON, nullable=True)
     correlation_id = Column(String, index=True, nullable=True)
     parent_alert_id = Column(String, index=True, nullable=True)
     child_alert_ids = Column(JSON, nullable=True)
@@ -324,7 +324,14 @@ class AlertManager:
         
         # Initialize components
         self._init_database()
-        self._init_redis()
+        # Redis initialization will be done asynchronously
+        self.redis_client = None
+        self.correlation_engine = None
+        self.notification_service = None
+    
+    async def initialize(self):
+        """Initialize async components"""
+        await self._init_redis()
         self._init_services()
     
     def _init_database(self):
@@ -341,11 +348,18 @@ class AlertManager:
     async def _init_redis(self):
         """Initialize Redis connection"""
         try:
-            self.redis_client = aioredis.from_url(
-                f"redis://{config.redis.host}:{config.redis.port}",
-                password=config.redis.password,
-                db=config.redis.db
-            )
+            redis_url = f"redis://{config.redis.host}:{config.redis.port}"
+            if config.redis.password:
+                self.redis_client = await aioredis.create_redis_pool(
+                    redis_url,
+                    password=config.redis.password,
+                    db=config.redis.db
+                )
+            else:
+                self.redis_client = await aioredis.create_redis_pool(
+                    redis_url,
+                    db=config.redis.db
+                )
             
             # Test connection
             await self.redis_client.ping()
@@ -395,7 +409,7 @@ class AlertManager:
                 risk_score=threat_alert.risk_score,
                 confidence=threat_alert.confidence,
                 evidence=threat_alert.evidence,
-                metadata=threat_alert.metadata,
+                metadata=threat_alert.alert_metadata,
                 correlation_id=correlation_id,
                 parent_alert_id=None,
                 child_alert_ids=[],
@@ -470,7 +484,7 @@ class AlertManager:
                     risk_score=alert.risk_score,
                     confidence=alert.confidence,
                     evidence=alert.evidence,
-                    metadata=alert.metadata,
+                    metadata=alert.alert_metadata,
                     correlation_id=alert.correlation_id,
                     parent_alert_id=alert.parent_alert_id,
                     child_alert_ids=alert.child_alert_ids,

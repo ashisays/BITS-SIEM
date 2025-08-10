@@ -6,7 +6,7 @@ Storage and retrieval of ingested syslog messages
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, JSON, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, JSON, Boolean, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -324,7 +324,7 @@ class DatabaseManager:
         """Check database health"""
         try:
             session = self.get_session()
-            session.execute("SELECT 1")
+            session.execute(text("SELECT 1"))
             session.close()
             return True
         except Exception as e:
