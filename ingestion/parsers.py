@@ -96,12 +96,13 @@ class SyslogParser:
     def _parse_rfc5424(self, message: str, source_ip: Optional[str] = None) -> SyslogMessage:
         """Parse RFC5424 format syslog message"""
         # RFC5424 format: <priority>version timestamp hostname app-name procid msgid structured-data msg
-        pattern = r'^<(\d+)>(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S*)\s*(.*)'
+        # structured-data can be '-' or one/more bracket groups that may contain spaces
+        pattern = r'^<(\d+)>(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(-|\[[^\]]*\](?:\s*\[[^\]]*\])*)\s*(.*)$'
         match = re.match(pattern, message)
-        
+
         if not match:
             raise ValueError("Invalid RFC5424 format")
-        
+
         priority = int(match.group(1))
         version = int(match.group(2))
         timestamp_str = match.group(3)
@@ -111,17 +112,17 @@ class SyslogParser:
         msg_id = match.group(7)
         structured_data_str = match.group(8)
         msg = match.group(9)
-        
+
         # Parse priority into facility and severity
         facility = priority >> 3
         severity = priority & 0x07
-        
+
         # Parse timestamp
         timestamp = self._parse_timestamp(timestamp_str)
-        
+
         # Parse structured data
         structured_data = self._parse_structured_data(structured_data_str)
-        
+
         return SyslogMessage(
             raw_message=message,
             format=SyslogFormat.RFC5424,

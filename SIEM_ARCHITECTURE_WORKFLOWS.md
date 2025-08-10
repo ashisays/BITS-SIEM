@@ -1,16 +1,16 @@
 # BITS-SIEM Architecture Workflows & Sequence Diagrams
 
+
 ## 🏗️ System Architecture Overview
 
-The BITS-SIEM system implements a microservices architecture with the following components:
+The BITS-SIEM system uses a microservices architecture with:
 
-- **Dashboard** (Vue.js): UI for registration, configuration, monitoring, alerts
-- **API** (FastAPI): Backend for tenant management & configuration
-- **Ingestion**: High-performance syslog ingestion (UDP, TCP, TLS)
-- **Processing**: Real-time analytics with ML-enhanced threat detection
-- **Storage**: PostgreSQL for persistent, multi-tenant data storage
-- **Notification**: Email & web-based notifications
-- **Redis**: Caching for fast data access
+- **Dashboard** (Vue.js 3, Vite, Pinia, Vue Router, WebSocket): UI for registration, configuration, monitoring, alerts, multi-tenant management, and real-time notifications.
+- **API** (FastAPI, SQLAlchemy, JWT, CSRF, WebSocket): Backend for tenant/user management, configuration, authentication, and alerting. Implements strict role-based access and tenant isolation.
+- **Ingestion**: High-performance syslog listeners (UDP, TCP, TLS) with async Python, parsing, enrichment, and tenant resolution.
+- **Processing**: Real-time analytics, ML-based anomaly detection, brute-force/port-scan/correlation engines, and alert generation.
+- **Storage**: PostgreSQL for persistent, multi-tenant data storage; Redis for caching and message queueing; optional time-series DB for analytics.
+- **Notification**: Email, WebSocket, and push notifications for alerts and status updates.
 
 ## 📊 Workflow Diagrams
 
@@ -88,6 +88,8 @@ graph TB
     
     TD --> NT
     AE --> NT
+
+    %% Notes: All API endpoints use JWT authentication and enforce tenant isolation. Real-time notifications are pushed via WebSocket. Error handling and access control are implemented at every layer.
 ```
 
 ### 2. Syslog Ingestion Workflow
@@ -211,6 +213,8 @@ graph TB
     style ANOM fill:#e8f5e8
     style ALERT fill:#ffcdd2
     style NOTIFY fill:#f8bbd9
+
+    %% Notes: Brute-force and port-scan detection logic matches backend code. ML-based anomaly detection and event correlation are implemented in Python. Alerts are generated and pushed to users in real time.
 ```
 
 ### 4. Multi-Tenant Data Flow
@@ -313,7 +317,7 @@ sequenceDiagram
     API-->>UI: Dashboard Data
     UI-->>U: Display Dashboard
     
-    Note over U,REDIS: Multi-tenant access controlled by JWT claims
+    Note over U,REDIS: Multi-tenant access, role-based permissions, and session management are enforced by JWT claims and backend validation. CSRF protection is applied to all state-changing operations.
 ```
 
 ### 2. Syslog Ingestion and Processing Sequence
@@ -453,6 +457,8 @@ def detect_brute_force(event):
                 source_ip=event.source_ip,
                 tenant_id=event.tenant_id
             )
+
+# Matches backend implementation: see `bruteforce_detection.py` for actual logic and alert creation.
 ```
 
 ### 2. Port Scanning Detection
@@ -473,6 +479,8 @@ def detect_port_scan(event):
                 source_ip=event.source_ip,
                 tenant_id=event.tenant_id
             )
+
+# Matches backend implementation: see `bruteforce_detection.py` for actual logic and alert creation.
 ```
 
 ## 🚀 Implementation Phases
@@ -504,23 +512,52 @@ def detect_port_scan(event):
 ## 🔧 Technical Stack
 
 ### Ingestion Layer
-- **Languages**: Python (asyncio) or Go
+
+### Ingestion Layer
+- **Languages**: Python (asyncio)
 - **Protocols**: UDP, TCP, TLS syslog
 - **Libraries**: asyncio, socket, ssl
 
 ### Processing Layer
-- **Stream Processing**: Apache Kafka or Redis Streams
+- **Stream Processing**: Redis Streams (default), optional Apache Kafka
 - **ML Libraries**: scikit-learn, TensorFlow
 - **Analytics**: Pandas, NumPy
 
 ### Storage Layer
-- **Primary**: PostgreSQL (existing)
-- **Cache**: Redis (existing)
-- **Time-series**: InfluxDB or TimescaleDB
+- **Primary**: PostgreSQL (multi-tenant, SQLAlchemy ORM)
+- **Cache/Queue**: Redis (caching, message queue, session store)
+- **Time-series**: InfluxDB or TimescaleDB (optional)
 
 ### Integration
-- **API**: FastAPI (existing)
-- **Frontend**: Vue.js (existing)
+- **API**: FastAPI (JWT, CSRF, WebSocket, SQLAlchemy)
+- **Frontend**: Vue.js 3, Vite, Pinia, Vue Router, WebSocket
 - **Notifications**: Email, WebSocket, Push
 
-This architecture provides a robust, scalable, and secure SIEM solution with multi-tenant support and advanced threat detection capabilities.
+### Security & Error Handling
+- **Authentication**: JWT, session management, CSRF protection
+- **Role-based Access**: Admin, SRE, User roles
+- **Tenant Isolation**: Enforced at API and database layers
+- **Error Handling**: Comprehensive backend and frontend error reporting
+
+This architecture provides a robust, scalable, and secure SIEM solution with multi-tenant support, advanced threat detection, and real-time alerting.
+
+## 🧪 Test Dataset & How to Run
+
+To validate features end-to-end, a reproducible test dataset and tests are included.
+
+### What it seeds
+- Multi-tenant base data (tenants, users, sources, notifications, reports) via `api/init_database.py`
+- Realistic AuthenticationEvent patterns (normal, brute-force burst, distributed failures) via `api/seed_test_data.py`
+- Optional UserBehaviorBaseline construction and default DetectionRule initialization when available
+
+### How to use
+1) Ensure PostgreSQL is reachable and `DATABASE_URL` is set (see `api/alembic.ini` for example URL).
+2) Initialize base data:
+    - In `api/`: run `python init_database.py`
+3) Seed test dataset:
+    - In `api/`: run `python seed_test_data.py`
+    - Or seed a single tenant: `python seed_test_data.py acme-corp`
+4) Run dataset smoke tests (optional):
+    - In `api/`: run `pytest -q` (requires `pytest` in `api/requirements.txt`)
+
+The dataset covers both normal behavior and attack patterns to exercise detection and correlation logic used by the backend.

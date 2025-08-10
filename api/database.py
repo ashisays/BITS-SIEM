@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey, Float, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.sql import func
@@ -48,6 +48,11 @@ if DATABASE_AVAILABLE and Base is not None:
         sources = relationship("Source", back_populates="tenant")
         notifications = relationship("Notification", back_populates="tenant")
         reports = relationship("Report", back_populates="tenant")
+        auth_events = relationship("AuthenticationEvent", back_populates="tenant")
+        user_baselines = relationship("UserBehaviorBaseline", back_populates="tenant")
+        detection_rules = relationship("DetectionRule", back_populates="tenant")
+        security_alerts = relationship("SecurityAlert", back_populates="tenant")
+        correlation_events = relationship("CorrelationEvent", back_populates="tenant")
 
     class User(Base):
         __tablename__ = "users"
@@ -113,6 +118,208 @@ if DATABASE_AVAILABLE and Base is not None:
         
         # Relationships
         tenant = relationship("Tenant", back_populates="reports")
+
+    class AuthenticationEvent(Base):
+        """Stores all authentication attempts with detailed context"""
+        __tablename__ = "authentication_events"
+        
+        id = Column(Integer, primary_key=True, index=True)
+        tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
+        user_id = Column(String, ForeignKey("users.id"), nullable=True)  # Null for failed attempts with invalid users
+        username = Column(String, nullable=False, index=True)
+        
+        # Event details
+        event_type = Column(String, nullable=False)  # login_success, login_failure, logout
+        source_type = Column(String, nullable=False)  # web, ssh, rdp, vpn, api, etc.
+        source_ip = Column(String, nullable=False, index=True)
+        source_port = Column(Integer)
+        user_agent = Column(Text)
+        
+        # Geographic and device context
+        country = Column(String)
+        city = Column(String)
+        device_fingerprint = Column(String)
+        session_id = Column(String)
+        
+        # Behavioral context
+        login_duration = Column(Integer)  # seconds
+        failed_attempts_count = Column(Integer, default=0)
+        time_since_last_attempt = Column(Integer)  # seconds
+        
+        # Metadata
+        metadata = Column(JSON)
+        timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+        
+        # Relationships
+        tenant = relationship("Tenant", back_populates="auth_events")
+        user = relationship("User")
+        
+        # Indexes for performance
+        __table_args__ = (
+            Index('idx_auth_tenant_user_time', 'tenant_id', 'username', 'timestamp'),
+            Index('idx_auth_ip_time', 'source_ip', 'timestamp'),
+            Index('idx_auth_type_time', 'event_type', 'timestamp'),
+        )
+
+    class UserBehaviorBaseline(Base):
+        """Stores behavioral baselines for each user per tenant"""
+        __tablename__ = "user_behavior_baselines"
+        
+        id = Column(Integer, primary_key=True, index=True)
+        tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
+        user_id = Column(String, ForeignKey("users.id"), nullable=False)
+        username = Column(String, nullable=False, index=True)
+        
+        # Temporal patterns
+        typical_login_hours = Column(JSON)  # [9, 10, 11, ..., 17] for 9AM-5PM
+        typical_days = Column(JSON)  # [1, 2, 3, 4, 5] for weekdays
+        avg_session_duration = Column(Float)  # minutes
+        
+        # Location patterns
+        typical_countries = Column(JSON)  # ["US", "CA"]
+        typical_ips = Column(JSON)  # ["192.168.1.100", "10.0.0.50"]
+        
+        # Device patterns
+        typical_user_agents = Column(JSON)
+        typical_devices = Column(JSON)
+        
+        # Behavioral metrics
+        avg_daily_logins = Column(Float)
+        avg_failed_attempts = Column(Float)
+        max_failed_attempts = Column(Integer)
+        
+        # Statistical thresholds (dynamically calculated)
+        login_frequency_threshold = Column(Float)  # logins per hour
+        failure_rate_threshold = Column(Float)  # percentage
+        location_deviation_threshold = Column(Float)
+        time_deviation_threshold = Column(Float)
+        
+        # Baseline metadata
+        sample_size = Column(Integer)  # number of events used for baseline
+        confidence_score = Column(Float)  # 0.0 to 1.0
+        last_updated = Column(DateTime, default=datetime.utcnow)
+        created_at = Column(DateTime, default=datetime.utcnow)
+        
+        # Relationships
+        tenant = relationship("Tenant", back_populates="user_baselines")
+        user = relationship("User")
+        
+        # Unique constraint
+        __table_args__ = (
+            Index('idx_baseline_tenant_user', 'tenant_id', 'user_id', unique=True),
+        )
+
+    class DetectionRule(Base):
+        """Configurable detection rules per tenant"""
+        __tablename__ = "detection_rules"
+        
+        id = Column(Integer, primary_key=True, index=True)
+        tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
+        
+        rule_name = Column(String, nullable=False)
+        rule_type = Column(String, nullable=False)  # behavioral, correlation, threshold
+        description = Column(Text)
+        
+        # Rule configuration
+        is_enabled = Column(Boolean, default=True)
+        severity = Column(String, default="medium")  # low, medium, high, critical
+        confidence_threshold = Column(Float, default=0.7)  # 0.0 to 1.0
+        
+        # Rule parameters (JSON for flexibility)
+        parameters = Column(JSON)  # Rule-specific configuration
+        
+        # Metadata
+        created_by = Column(String, nullable=False)
+        created_at = Column(DateTime, default=datetime.utcnow)
+        updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+        
+        # Relationships
+        tenant = relationship("Tenant", back_populates="detection_rules")
+
+    class SecurityAlert(Base):
+        """Generated security alerts from detection system"""
+        __tablename__ = "security_alerts"
+        
+        id = Column(Integer, primary_key=True, index=True)
+        tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
+        
+        # Alert details
+        alert_type = Column(String, nullable=False)  # brute_force, anomalous_behavior, correlation
+        title = Column(String, nullable=False)
+        description = Column(Text)
+        severity = Column(String, nullable=False)  # low, medium, high, critical
+        confidence_score = Column(Float, nullable=False)  # 0.0 to 1.0
+        
+        # Related entities
+        username = Column(String, index=True)
+        source_ip = Column(String, index=True)
+        affected_systems = Column(JSON)  # List of affected sources/systems
+        
+        # Detection context
+        detection_rule_id = Column(Integer, ForeignKey("detection_rules.id"))
+        triggering_events = Column(JSON)  # IDs of events that triggered this alert
+        correlation_data = Column(JSON)  # Cross-source correlation information
+        
+        # Alert lifecycle
+        status = Column(String, default="open")  # open, investigating, resolved, false_positive
+        assigned_to = Column(String)
+        resolution_notes = Column(Text)
+        resolved_at = Column(DateTime)
+        
+        # Metadata
+        created_at = Column(DateTime, default=datetime.utcnow, index=True)
+        updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+        
+        # Relationships
+        tenant = relationship("Tenant", back_populates="security_alerts")
+        detection_rule = relationship("DetectionRule")
+        
+        # Indexes for performance
+        __table_args__ = (
+            Index('idx_alert_tenant_status_time', 'tenant_id', 'status', 'created_at'),
+            Index('idx_alert_severity_time', 'severity', 'created_at'),
+        )
+
+    class CorrelationEvent(Base):
+        """Stores correlated events across multiple sources"""
+        __tablename__ = "correlation_events"
+        
+        id = Column(Integer, primary_key=True, index=True)
+        tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
+        
+        # Correlation details
+        correlation_id = Column(String, nullable=False, index=True)  # Groups related events
+        event_type = Column(String, nullable=False)  # multi_source_failure, cross_service_attempt
+        
+        # Correlated data
+        username = Column(String, index=True)
+        source_ip = Column(String, index=True)
+        involved_sources = Column(JSON)  # List of source types involved
+        event_ids = Column(JSON)  # List of authentication_event IDs
+        
+        # Correlation metrics
+        event_count = Column(Integer, nullable=False)
+        time_window = Column(Integer)  # seconds between first and last event
+        confidence_score = Column(Float)  # 0.0 to 1.0
+        
+        # Analysis results
+        pattern_type = Column(String)  # sequential, parallel, distributed
+        risk_score = Column(Float)  # 0.0 to 1.0
+        metadata = Column(JSON)
+        
+        # Timestamps
+        first_event_time = Column(DateTime, nullable=False)
+        last_event_time = Column(DateTime, nullable=False)
+        created_at = Column(DateTime, default=datetime.utcnow)
+        
+        # Relationships
+        tenant = relationship("Tenant", back_populates="correlation_events")
+        
+        # Indexes for performance
+        __table_args__ = (
+            Index('idx_correlation_tenant_id', 'tenant_id', 'correlation_id'),
+            Index('idx_correlation_ip_time', 'source_ip', 'first_event_time'),
+        )
 
 # Database session dependency
 def get_db():
@@ -251,6 +458,6 @@ def init_db():
 
 # Make models available for import
 if DATABASE_AVAILABLE:
-    __all__ = ["get_db", "init_db", "Tenant", "User", "Source", "Notification", "Report", "DATABASE_AVAILABLE"]
+    __all__ = ["get_db", "init_db", "Tenant", "User", "Source", "Notification", "Report", "AuthenticationEvent", "UserBehaviorBaseline", "DetectionRule", "SecurityAlert", "CorrelationEvent", "DATABASE_AVAILABLE"]
 else:
     __all__ = ["get_db", "init_db", "DATABASE_AVAILABLE"]

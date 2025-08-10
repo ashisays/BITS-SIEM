@@ -311,11 +311,19 @@ class MessageEnricher:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get enrichment statistics"""
+        # Determine redis connectivity safely
+        connected = False
+        if self.redis_client:
+            try:
+                connected = bool(self.redis_client.ping())
+            except Exception:
+                connected = False
+
         return {
             'enrichment': self.stats.copy(),
             'tenant_resolver': self.tenant_resolver.get_tenant_stats(),
             'redis_info': {
-                'connected': self.redis_client.ping() if self.redis_client else False
+                'connected': connected
             }
         }
     

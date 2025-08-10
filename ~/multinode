@@ -1,0 +1,133 @@
+[control]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[network]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[compute]
+controller ansible_host=9.66.0.167 ansible_user=auto
+compute1 ansible_host=9.66.0.168 ansible_user=auto
+compute2 ansible_host=9.66.0.169 ansible_user=auto
+
+[storage]
+compute1 ansible_host=9.66.0.168 ansible_user=auto
+compute2 ansible_host=9.66.0.169 ansible_user=auto
+
+[monitoring]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[loadbalancer]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[baremetal]
+# Leave empty unless using baremetal
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+
+# Nova (Compute)
+[nova-api]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[nova-conductor]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[nova-novncproxy]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[nova-metadata]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[nova-serialproxy]
+# Leave empty unless using serial console
+
+[nova-spicehtml5proxy]
+# Leave empty unless using SPICE
+
+[nova-compute-ironic]
+# Leave empty unless using Ironic
+
+# Neutron (Networking)
+[neutron-server]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[neutron-dhcp-agent]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[neutron-l3-agent]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[neutron-metadata-agent]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[neutron-openvswitch-agent]
+controller ansible_host=9.66.0.167 ansible_user=auto
+compute1 ansible_host=9.66.0.168 ansible_user=auto
+compute2 ansible_host=9.66.0.169 ansible_user=auto
+
+[neutron-ovn-metadata-agent]
+# Leave empty unless using OVN
+
+[neutron-bgp-dragent]
+# Leave empty unless using BGP dynamic routing
+
+[neutron-linuxbridge-agent]
+# Leave empty unless using Linuxbridge
+
+[neutron-sriov-agent]
+# Leave empty unless using SR-IOV
+
+[neutron-mlnx-agent]
+# Leave empty unless using Mellanox
+
+[neutron-eswitchd]
+# Leave empty unless using Mellanox
+
+[neutron-infoblox-ipam-agent]
+# Leave empty unless using Infoblox
+
+[neutron-metering-agent]
+# Leave empty unless using Neutron metering
+
+[ironic-neutron-agent]
+# Leave empty unless using Ironic
+
+[neutron-tls-proxy]
+# Leave empty unless using TLS proxy
+
+[neutron-ovn-agent]
+# Leave empty unless using OVN
+
+# Cinder (Block Storage)
+[cinder-api]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+# Glance (Image)
+[glance-api]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+# MariaDB (Database)
+[mariadb]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+# Heat (Orchestration)
+[heat-api]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[heat-api-cfn]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+# Horizon (Dashboard)
+[horizon]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+# Keystone (Identity)
+[keystone]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+# Placement
+[placement-api]
+controller ansible_host=9.66.0.167 ansible_user=auto
+
+[deployment]
+localhost ansible_connection=local 

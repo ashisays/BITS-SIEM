@@ -33,10 +33,25 @@ except Exception as e:
     def get_db(): return None
     def init_db(): return False
 
+# Try to import detection system
+try:
+    from detection_api import detection_router
+    DETECTION_AVAILABLE = True
+    print("Detection system loaded successfully")
+except Exception as e:
+    print(f"Detection system import failed: {e}")
+    DETECTION_AVAILABLE = False
+    detection_router = None
+
 SECRET_KEY = config.security.jwt_secret
 ALGORITHM = config.security.jwt_algorithm
 
 app = FastAPI(title="BITS-SIEM API", version="1.0.0")
+
+# Include detection router if available
+if DETECTION_AVAILABLE and detection_router:
+    app.include_router(detection_router)
+    print("Detection API endpoints registered")
 
 # CSRF Protection
 class CSRFProtection:
