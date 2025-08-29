@@ -1,0 +1,56 @@
+[
+  {
+    "test": "Authentication",
+    "success": true,
+    "details": "Token: eyJhbGciOiJIUzI1NiIs...",
+    "timestamp": "2025-08-29T12:01:06.032772"
+  },
+  {
+    "test": "Notification Service Health",
+    "success": true,
+    "details": "Status: healthy",
+    "timestamp": "2025-08-29T12:01:06.036301"
+  },
+  {
+    "test": "Direct Notification Send",
+    "success": false,
+    "details": "Status: partial_failure",
+    "timestamp": "2025-08-29T12:01:06.041987"
+  },
+  {
+    "test": "Brute Force Detection",
+    "success": true,
+    "details": "Sent 10 failed events",
+    "timestamp": "2025-08-29T12:01:07.238193"
+  },
+  {
+    "test": "Port Scan Detection",
+    "success": true,
+    "details": "Sent 13 scan events",
+    "timestamp": "2025-08-29T12:01:08.734825"
+  },
+  {
+    "test": "Alerts Generated",
+    "success": true,
+    "details": "Found 10 recent alerts",
+    "timestamp": "2025-08-29T12:01:13.758267"
+  },
+  {
+    "test": "Dashboard Integration",
+    "success": true,
+    "details": "Stats: 24 alerts (24h), 24 active",
+    "timestamp": "2025-08-29T12:01:13.772664"
+  },
+  {
+    "test": "WebSocket Connection",
+    "success": true,
+    "details": "Connected successfully",
+    "timestamp": "2025-08-29T12:01:14.814309"
+  },
+  {
+    "test": "WebSocket Notifications",
+    "success": false,
+    "details": "No notifications received within timeout",
+    "timestamp": "2025-08-29T12:01:24.814966"
+  }
+]

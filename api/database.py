@@ -360,11 +360,11 @@ def init_db():
         
         # Create tenants (only if they don't exist)
         tenants_data = [
-            {"id": "acme-corp", "name": "Acme Corporation", "description": "Technology company"},
-            {"id": "beta-industries", "name": "Beta Industries", "description": "Manufacturing company"},
-            {"id": "cisco-systems", "name": "Cisco Systems", "description": "Networking and cybersecurity company"},
+            {"id": "dummy-tech", "name": "Dummy Tech Solutions", "description": "Fictional technology company"},
+            {"id": "dummy-manufacturing", "name": "Dummy Manufacturing Co", "description": "Fictional manufacturing company"},
+            {"id": "dummy-finance", "name": "Dummy Finance Corp", "description": "Fictional financial services company"},
             {"id": "demo-org", "name": "Demo Organization", "description": "Demo organization for testing"},
-            {"id": "bits-internal", "name": "BITS Internal", "description": "Internal BITS organization for SRE team"}
+            {"id": "dummy-internal", "name": "Dummy Internal", "description": "Internal dummy organization for testing"}
         ]
         
         for tenant_data in tenants_data:
@@ -376,13 +376,13 @@ def init_db():
         
         # Create users (only if they don't exist)
         users_data = [
-            {"id": "admin@acme.com", "email": "admin@acme.com", "password": "admin123", "name": "Acme Admin", "tenant_id": "acme-corp", "role": "admin", "tenants_access": ["acme-corp"]},
-            {"id": "user@acme.com", "email": "user@acme.com", "password": "user123", "name": "Acme User", "tenant_id": "acme-corp", "role": "user", "tenants_access": ["acme-corp"]},
-            {"id": "admin@beta.com", "email": "admin@beta.com", "password": "admin123", "name": "Beta Admin", "tenant_id": "beta-industries", "role": "admin", "tenants_access": ["beta-industries"]},
-            {"id": "aspundir@cisco.com", "email": "aspundir@cisco.com", "password": "password123", "name": "Aspundir Singh", "tenant_id": "cisco-systems", "role": "admin", "tenants_access": ["cisco-systems"]},
+            {"id": "admin@dummytech.com", "email": "admin@dummytech.com", "password": "admin123", "name": "Dummy Tech Admin", "tenant_id": "dummy-tech", "role": "admin", "tenants_access": ["dummy-tech"]},
+            {"id": "user@dummytech.com", "email": "user@dummytech.com", "password": "user123", "name": "Dummy Tech User", "tenant_id": "dummy-tech", "role": "user", "tenants_access": ["dummy-tech"]},
+            {"id": "admin@dummymanufacturing.com", "email": "admin@dummymanufacturing.com", "password": "admin123", "name": "Dummy Manufacturing Admin", "tenant_id": "dummy-manufacturing", "role": "admin", "tenants_access": ["dummy-manufacturing"]},
+            {"id": "admin@dummyfinance.com", "email": "admin@dummyfinance.com", "password": "password123", "name": "Dummy Finance Admin", "tenant_id": "dummy-finance", "role": "admin", "tenants_access": ["dummy-finance"]},
             {"id": "admin@demo.com", "email": "admin@demo.com", "password": "demo123", "name": "Demo Admin", "tenant_id": "demo-org", "role": "admin", "tenants_access": ["demo-org"]},
             {"id": "user@demo.com", "email": "user@demo.com", "password": "demo123", "name": "Demo User", "tenant_id": "demo-org", "role": "user", "tenants_access": ["demo-org"]},
-            {"id": "sre@bits.com", "email": "sre@bits.com", "password": "sre123", "name": "BITS SRE", "tenant_id": "bits-internal", "role": "sre", "tenants_access": ["bits-internal", "acme-corp", "beta-industries", "cisco-systems", "demo-org"]}
+            {"id": "admin@dummyinternal.com", "email": "admin@dummyinternal.com", "password": "admin123", "name": "Dummy Internal Admin", "tenant_id": "dummy-internal", "role": "admin", "tenants_access": ["dummy-internal", "dummy-tech", "dummy-manufacturing", "dummy-finance", "demo-org"]}
         ]
         
         for user_data in users_data:
@@ -394,11 +394,11 @@ def init_db():
         
         # Create sources
         sources_data = [
-            {"name": "Web Server", "type": "web-server", "ip": "192.168.1.100", "port": 80, "protocol": "http", "tenant_id": "acme-corp", "notifications": {"enabled": True, "emails": ["admin@acme.com", "security@acme.com"]}},
-            {"name": "Database Server", "type": "database", "ip": "192.168.1.200", "port": 3306, "protocol": "tcp", "tenant_id": "acme-corp", "notifications": {"enabled": True, "emails": ["dba@acme.com"]}},
-            {"name": "Firewall", "type": "firewall", "ip": "10.0.1.1", "port": 514, "protocol": "udp", "status": "warning", "tenant_id": "beta-industries", "notifications": {"enabled": True, "emails": ["admin@beta.com"]}},
-            {"name": "Cisco ASA Firewall", "type": "firewall", "ip": "172.16.1.1", "port": 443, "protocol": "https", "tenant_id": "cisco-systems", "notifications": {"enabled": True, "emails": ["aspundir@cisco.com", "security@cisco.com"]}},
-            {"name": "IOS Router", "type": "router", "ip": "172.16.1.2", "port": 161, "protocol": "snmp", "tenant_id": "cisco-systems", "notifications": {"enabled": True, "emails": ["netops@cisco.com"]}},
+            {"name": "Web Server", "type": "web-server", "ip": "192.168.1.100", "port": 80, "protocol": "http", "tenant_id": "dummy-tech", "notifications": {"enabled": True, "emails": ["admin@dummytech.com", "security@dummytech.com"]}},
+            {"name": "Database Server", "type": "database", "ip": "192.168.1.200", "port": 3306, "protocol": "tcp", "tenant_id": "dummy-tech", "notifications": {"enabled": True, "emails": ["dba@dummytech.com"]}},
+            {"name": "Firewall", "type": "firewall", "ip": "10.0.1.1", "port": 514, "protocol": "udp", "status": "warning", "tenant_id": "dummy-manufacturing", "notifications": {"enabled": True, "emails": ["admin@dummymanufacturing.com"]}},
+            {"name": "Network Firewall", "type": "firewall", "ip": "172.16.1.1", "port": 443, "protocol": "https", "tenant_id": "dummy-finance", "notifications": {"enabled": True, "emails": ["admin@dummyfinance.com", "security@dummyfinance.com"]}},
+            {"name": "Core Router", "type": "router", "ip": "172.16.1.2", "port": 161, "protocol": "snmp", "tenant_id": "dummy-finance", "notifications": {"enabled": True, "emails": ["netops@dummyfinance.com"]}},
             {"name": "Demo Web Server", "type": "web-server", "ip": "10.0.0.100", "port": 80, "protocol": "http", "tenant_id": "demo-org", "notifications": {"enabled": True, "emails": ["admin@demo.com"]}}
         ]
         
@@ -408,12 +408,12 @@ def init_db():
         
         # Create notifications
         notifications_data = [
-            {"message": "High CPU usage detected on Web Server", "severity": "warning", "tenant_id": "acme-corp", "meta_data": {"cpu_usage": "85%"}},
-            {"message": "Suspicious login attempt blocked", "severity": "critical", "tenant_id": "acme-corp", "meta_data": {"ip": "192.168.1.50"}},
-            {"message": "System backup completed successfully", "severity": "info", "tenant_id": "acme-corp", "is_read": True, "meta_data": {"backup_size": "2.3GB"}},
-            {"message": "Firewall rule updated", "severity": "info", "tenant_id": "beta-industries", "meta_data": {"rule_id": "FW-001"}},
-            {"message": "Network intrusion detected", "severity": "critical", "tenant_id": "cisco-systems", "meta_data": {"source_ip": "172.16.1.50"}},
-            {"message": "Router configuration backup", "severity": "info", "tenant_id": "cisco-systems", "is_read": True, "meta_data": {"device": "IOS-Router-01"}},
+            {"message": "High CPU usage detected on Web Server", "severity": "warning", "tenant_id": "dummy-tech", "meta_data": {"cpu_usage": "85%"}},
+            {"message": "Suspicious login attempt blocked", "severity": "critical", "tenant_id": "dummy-tech", "meta_data": {"ip": "192.168.1.50"}},
+            {"message": "System backup completed successfully", "severity": "info", "tenant_id": "dummy-tech", "is_read": True, "meta_data": {"backup_size": "2.3GB"}},
+            {"message": "Firewall rule updated", "severity": "info", "tenant_id": "dummy-manufacturing", "meta_data": {"rule_id": "FW-001"}},
+            {"message": "Network intrusion detected", "severity": "critical", "tenant_id": "dummy-finance", "meta_data": {"source_ip": "172.16.1.50"}},
+            {"message": "Router configuration backup", "severity": "info", "tenant_id": "dummy-finance", "is_read": True, "meta_data": {"device": "Core-Router-01"}},
             {"message": "Demo alert - System monitoring", "severity": "info", "tenant_id": "demo-org", "meta_data": {"status": "monitoring"}}
         ]
         
@@ -423,10 +423,10 @@ def init_db():
         
         # Create reports
         reports_data = [
-            {"title": "Security Summary Report", "summary": "Weekly security overview", "report_type": "security", "tenant_id": "acme-corp", "generated_by": "system", "data": {"total_events": 1250, "threats_blocked": 15}},
-            {"title": "Threat Analysis Report", "summary": "Analysis of recent security threats", "report_type": "threat", "tenant_id": "acme-corp", "generated_by": "admin", "data": {"threats_detected": 8, "false_positives": 2}},
-            {"title": "Network Security Report", "summary": "Network security assessment", "report_type": "network", "tenant_id": "beta-industries", "generated_by": "system", "data": {"vulnerabilities": 3, "patches_needed": 5}},
-            {"title": "Cisco Infrastructure Report", "summary": "Cisco network infrastructure analysis", "report_type": "infrastructure", "tenant_id": "cisco-systems", "generated_by": "admin", "data": {"devices_monitored": 25, "uptime": "99.9%"}},
+            {"title": "Security Summary Report", "summary": "Weekly security overview", "report_type": "security", "tenant_id": "dummy-tech", "generated_by": "system", "data": {"total_events": 1250, "threats_blocked": 15}},
+            {"title": "Threat Analysis Report", "summary": "Analysis of recent security threats", "report_type": "threat", "tenant_id": "dummy-tech", "generated_by": "admin", "data": {"threats_detected": 8, "false_positives": 2}},
+            {"title": "Network Security Report", "summary": "Network security assessment", "report_type": "network", "tenant_id": "dummy-manufacturing", "generated_by": "system", "data": {"vulnerabilities": 3, "patches_needed": 5}},
+            {"title": "Infrastructure Report", "summary": "Network infrastructure analysis", "report_type": "infrastructure", "tenant_id": "dummy-finance", "generated_by": "admin", "data": {"devices_monitored": 25, "uptime": "99.9%"}},
             {"title": "Demo Security Report", "summary": "Demo security overview", "report_type": "security", "tenant_id": "demo-org", "generated_by": "system", "data": {"events": 100, "alerts": 5}}
         ]
         
@@ -439,7 +439,7 @@ def init_db():
         print("Database initialized successfully with sample data")
         
         # Update tenant counts
-        for tenant_id in ["acme-corp", "beta-industries", "cisco-systems", "demo-org"]:
+        for tenant_id in ["dummy-tech", "dummy-manufacturing", "dummy-finance", "demo-org"]:
             tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
             if tenant:
                 tenant.user_count = db.query(User).filter(User.tenant_id == tenant_id).count()

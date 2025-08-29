@@ -428,6 +428,9 @@ class AlertManager:
                     managed_alert.last_notification_at = datetime.utcnow()
                     self.stats['notifications_sent'] += 1
             
+            # Send enhanced notification to notification service
+            await self._send_enhanced_notification(threat_alert, managed_alert)
+            
             self.stats['alerts_created'] += 1
             logger.info(f"Alert created: {managed_alert.id}")
             
@@ -500,6 +503,47 @@ class AlertManager:
             if self.db_session:
                 self.db_session.rollback()
             logger.error(f"Error storing alert: {e}")
+    
+    async def _send_enhanced_notification(self, threat_alert: ThreatAlert, managed_alert: ManagedAlert):
+        """Send enhanced notification to notification service"""
+        try:
+            if not self.redis_client:
+                return
+            
+            # Prepare enhanced notification data
+            notification_data = {
+                'id': str(uuid.uuid4()),
+                'tenant_id': threat_alert.tenant_id,
+                'user_id': None,  # Will be set by notification service based on tenant
+                'type': 'security_alert',
+                'severity': threat_alert.severity,
+                'title': threat_alert.title,
+                'message': threat_alert.description,
+                'source_ip': threat_alert.source_ip,
+                'target_ip': threat_alert.target_ip,
+                'alert_id': managed_alert.id,
+                'correlation_id': managed_alert.correlation_id,
+                'metadata': {
+                    'alert_type': threat_alert.alert_type,
+                    'risk_score': threat_alert.risk_score,
+                    'confidence_score': threat_alert.confidence,
+                    'failed_attempts': threat_alert.evidence.get('failed_attempts'),
+                    'time_window': threat_alert.evidence.get('window_seconds'),
+                    'ports_count': threat_alert.evidence.get('unique_ports'),
+                    'scan_type': threat_alert.evidence.get('scan_type'),
+                    'username': threat_alert.evidence.get('username'),
+                    'affected_systems': threat_alert.evidence.get('affected_systems', [])
+                },
+                'created_at': managed_alert.created_at.isoformat()
+            }
+            
+            # Send to notification stream
+            await self.redis_client.xadd('notification_stream', notification_data)
+            
+            logger.info(f"Enhanced notification sent for alert {managed_alert.id}")
+            
+        except Exception as e:
+            logger.error(f"Error sending enhanced notification: {e}")
     
     async def acknowledge_alert(self, alert_id: str, user_id: str) -> bool:
         """Acknowledge an alert"""

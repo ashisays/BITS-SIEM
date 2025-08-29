@@ -7,6 +7,16 @@
         Brute-Force Detection System
       </h2>
       <div class="header-actions">
+        <div class="real-time-controls">
+          <button @click="toggleRealTime" :class="['btn', realTimeEnabled ? 'btn-success' : 'btn-secondary']" title="Toggle real-time monitoring">
+            <i class="fas" :class="realTimeEnabled ? 'fa-broadcast-tower' : 'fa-stop-circle'"></i>
+            {{ realTimeEnabled ? 'Real-time ON' : 'Real-time OFF' }}
+          </button>
+          <div class="connection-status" :class="{ 'connected': websocketConnected, 'disconnected': !websocketConnected }">
+            <i class="fas fa-circle"></i>
+            {{ websocketConnected ? 'Connected' : 'Disconnected' }}
+          </div>
+        </div>
         <button @click="refreshData" :disabled="loading" class="btn btn-primary">
           <i class="fas fa-sync-alt" :class="{ 'fa-spin': loading }"></i>
           Refresh
@@ -211,6 +221,7 @@
 
 <script>
 import { useAuth } from '../composables/useAuth'
+import { connectWebSocket, disconnectWebSocket, isConnected } from '../services/socket'
 
 export default {
   name: 'DetectionDashboard',
@@ -221,6 +232,8 @@ export default {
   data() {
     return {
       loading: false,
+      websocketConnected: false,
+      realTimeEnabled: true,
       stats: {
         total_events_24h: 0,
         total_alerts_24h: 0,
@@ -232,19 +245,38 @@ export default {
       alerts: [],
       selectedAlert: null,
       selectedSeverity: '',
-      selectedStatus: ''
+      selectedStatus: '',
+      notificationSettings: {
+        soundEnabled: true,
+        desktopNotifications: true,
+        autoRefresh: true
+      }
     }
   },
   async mounted() {
     await this.loadData()
+    
     // Set up auto-refresh every 30 seconds
     this.refreshInterval = setInterval(() => {
-      this.loadData()
+      if (this.notificationSettings.autoRefresh) {
+        this.loadData()
+      }
     }, 30000)
+    
+    // Initialize WebSocket connection for real-time notifications
+    this.initializeWebSocket()
+    
+    // Request notification permissions
+    this.requestNotificationPermissions()
   },
   beforeUnmount() {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval)
+    }
+    
+    // Disconnect WebSocket
+    if (this.websocketConnected) {
+      disconnectWebSocket()
     }
   },
   methods: {
@@ -253,6 +285,221 @@ export default {
         this.loadStats(),
         this.loadAlerts()
       ])
+    },
+    
+    initializeWebSocket() {
+      if (!this.tenantId) {
+        console.warn('No tenant ID available for WebSocket connection')
+        return
+      }
+      
+      const token = localStorage.getItem('token')
+      if (!token) {
+        console.warn('No authentication token available for WebSocket connection')
+        return
+      }
+      
+      try {
+        connectWebSocket(
+          token,
+          this.tenantId,
+          this.handleWebSocketMessage,
+          this.handleWebSocketConnect,
+          this.handleWebSocketDisconnect
+        )
+      } catch (error) {
+        console.error('Failed to initialize WebSocket:', error)
+      }
+    },
+    
+    handleWebSocketMessage(data) {
+      console.log('Received real-time update:', data)
+      
+      if (data.type === 'security_alert') {
+        // Handle security alert notification
+        this.handleSecurityAlert(data)
+        
+        // Show desktop notification if enabled
+        if (this.notificationSettings.desktopNotifications) {
+          this.showDesktopNotification(data)
+        }
+        
+        // Play sound if enabled
+        if (this.notificationSettings.soundEnabled) {
+          this.playAlertSound()
+        }
+      }
+    },
+    
+    handleWebSocketConnect(event) {
+      console.log('WebSocket connected')
+      this.websocketConnected = true
+      
+      // Show connection status
+      this.$nextTick(() => {
+        this.showToast('Real-time monitoring connected', 'success')
+      })
+    },
+    
+    handleWebSocketDisconnect(event) {
+      console.log('WebSocket disconnected')
+      this.websocketConnected = false
+      
+      // Show disconnection status
+      this.$nextTick(() => {
+        this.showToast('Real-time monitoring disconnected', 'warning')
+      })
+    },
+    
+    handleSecurityAlert(alert) {
+      // Add new alert to the top of the list
+      const newAlert = {
+        id: alert.alert_id || `new_${Date.now()}`,
+        alert_type: alert.type,
+        severity: alert.severity,
+        title: alert.title,
+        description: alert.message,
+        username: alert.metadata?.username || 'Unknown',
+        source_ip: alert.source_ip,
+        confidence_score: alert.metadata?.confidence_score || 0.8,
+        status: 'open',
+        created_at: alert.created_at || new Date().toISOString(),
+        affected_systems: alert.metadata?.affected_systems || []
+      }
+      
+      // Add to alerts list
+      this.alerts.unshift(newAlert)
+      
+      // Keep only last 100 alerts
+      if (this.alerts.length > 100) {
+        this.alerts = this.alerts.slice(0, 100)
+      }
+      
+      // Update stats
+      this.stats.total_alerts_24h += 1
+      this.stats.active_alerts += 1
+      
+      // Update severity breakdown
+      const severity = newAlert.severity.toLowerCase()
+      this.stats.alert_severity_breakdown[severity] = (this.stats.alert_severity_breakdown[severity] || 0) + 1
+      
+      // Show toast notification
+      this.showToast(`New ${alert.severity} alert: ${alert.title}`, 'info')
+    },
+    
+    async requestNotificationPermissions() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        try {
+          const permission = await Notification.requestPermission()
+          if (permission === 'granted') {
+            console.log('Desktop notifications enabled')
+          }
+        } catch (error) {
+          console.warn('Failed to request notification permissions:', error)
+        }
+      }
+    },
+    
+    showDesktopNotification(alert) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification('Security Alert', {
+          body: alert.message,
+          icon: '/favicon.ico',
+          tag: alert.id,
+          requireInteraction: true
+        })
+        
+        // Handle notification click
+        notification.onclick = () => {
+          window.focus()
+          notification.close()
+        }
+      }
+    },
+    
+    playAlertSound() {
+      try {
+        // Create audio context for alert sound
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+        
+        oscillator.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        // Configure alert sound
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
+        oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1)
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2)
+        
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+        
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.3)
+        
+      } catch (error) {
+        console.warn('Failed to play alert sound:', error)
+      }
+    },
+    
+    showToast(message, type = 'info') {
+      // Create toast element
+      const toast = document.createElement('div')
+      toast.className = `toast toast-${type}`
+      toast.style.cssText = `
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        background: ${this.getToastColor(type)};
+        color: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        z-index: 9999;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        animation: slideInRight 0.3s ease-out;
+        max-width: 300px;
+      `
+      
+      toast.textContent = message
+      document.body.appendChild(toast)
+      
+      // Auto-remove after 4 seconds
+      setTimeout(() => {
+        if (toast.parentElement) {
+          toast.style.animation = 'slideOutRight 0.3s ease-in'
+          setTimeout(() => {
+            if (toast.parentElement) {
+              toast.remove()
+            }
+          }, 300)
+        }
+      }, 4000)
+    },
+    
+    getToastColor(type) {
+      switch (type) {
+        case 'success': return '#28a745'
+        case 'warning': return '#ffc107'
+        case 'error': return '#dc3545'
+        case 'info': return '#17a2b8'
+        default: return '#6c757d'
+      }
+    },
+    
+    toggleRealTime() {
+      this.realTimeEnabled = !this.realTimeEnabled
+      
+      if (this.realTimeEnabled) {
+        this.initializeWebSocket()
+        this.showToast('Real-time monitoring enabled', 'success')
+      } else {
+        if (this.websocketConnected) {
+          disconnectWebSocket()
+        }
+        this.showToast('Real-time monitoring disabled', 'warning')
+      }
     },
     
     async loadStats() {
@@ -315,14 +562,18 @@ export default {
           }
           // Reload stats to update counts
           await this.loadStats()
+          
+          this.showToast(`Alert status updated to ${newStatus}`, 'success')
         }
       } catch (error) {
         console.error('Error updating alert status:', error)
+        this.showToast('Failed to update alert status', 'error')
       }
     },
     
     async refreshData() {
       await this.loadData()
+      this.showToast('Data refreshed', 'info')
     },
     
     showAlertDetails(alert) {
@@ -377,6 +628,34 @@ export default {
 .header-actions {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.real-time-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-right: 15px;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.connection-status.connected {
+  color: #28a745;
+}
+
+.connection-status.disconnected {
+  color: #dc3545;
+}
+
+.connection-status i {
+  font-size: 0.75rem;
 }
 
 .btn {

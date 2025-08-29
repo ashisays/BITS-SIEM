@@ -158,35 +158,7 @@ class ProcessingService:
             logger.error(f"Error starting processing service: {e}")
             raise
     
-    async def _processing_loop(self):
-        """Main event processing loop"""
-        logger.info("Starting main processing loop")
-        
-        while self.running:
-            try:
-                # Process events from stream
-                events = await self.stream_processor.get_events(
-                    batch_size=config.processing.batch_size,
-                    timeout=config.processing.batch_timeout
-                )
-                
-                if events:
-                    await self._process_events(events)
-                else:
-                    # No events, sleep briefly
-                    await asyncio.sleep(0.1)
-                    
-            except asyncio.CancelledError:
-                logger.info("Processing loop cancelled")
-                break
-            except Exception as e:
-                logger.error(f"Error in processing loop: {e}")
-                self.stats['processing_errors'] += 1
-                PROCESSING_ERRORS.labels(
-                    tenant_id="unknown",
-                    error_type="processing_loop"
-                ).inc()
-                await asyncio.sleep(1)  # Brief pause on error
+    # _processing_loop method removed - StreamProcessor.start() handles message processing
     
     async def _process_events(self, events: List[ProcessedEvent]):
         """Process a batch of events"""

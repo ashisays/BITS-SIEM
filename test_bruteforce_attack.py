@@ -48,9 +48,9 @@ def simulate_brute_force_attack():
     
     # Organizations to test
     organizations = [
-        {"tenant_id": "acme", "name": "Acme Corp"},
-        {"tenant_id": "beta", "name": "Beta Industries"},
-        {"tenant_id": "cisco", "name": "Cisco Systems"}
+        {"tenant_id": "acme-corp", "name": "Acme Corp"},
+        {"tenant_id": "beta-industries", "name": "Beta Industries"},
+        {"tenant_id": "cisco-systems", "name": "Cisco Systems"}
     ]
     
     attack_scenarios = []
@@ -167,7 +167,7 @@ def check_alerts_in_database():
         api_url = "http://localhost:8000"
         
         # Get notifications for each tenant
-        tenants = ["acme", "beta", "cisco"]
+        tenants = ["acme-corp", "beta-industries", "cisco-systems"]
         
         for tenant in tenants:
             try:
@@ -222,8 +222,8 @@ if __name__ == "__main__":
     print("\n📝 Next Steps:")
     print("1. Check the dashboard at http://localhost:3000")
     print("2. Login with organization credentials:")
-    print("   - Acme: admin@acme.com / admin123")
-    print("   - Beta: admin@beta.com / admin123") 
-    print("   - Cisco: aspundir@cisco.com / admin123")
+    print("   - Acme Corp: admin@acme.com / admin123")
+    print("   - Beta Industries: admin@beta.com / admin123") 
+    print("   - Cisco Systems: aspundir@cisco.com / admin123")
     print("3. Look for security alerts in notifications")
     print("4. Check processing service logs: docker logs bits-siem-processing-1")

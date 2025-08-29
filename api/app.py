@@ -116,8 +116,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 # CSRF middleware
 @app.middleware("http")
 async def csrf_middleware(request: Request, call_next):
-    # Skip CSRF check for GET requests and authentication endpoints
-    if request.method == "GET" or request.url.path.startswith("/api/auth/"):
+    # Skip CSRF check for GET requests, authentication endpoints, and detection endpoints
+    if (request.method == "GET" or 
+        request.url.path.startswith("/api/auth/") or 
+        request.url.path.startswith("/api/detection/")):
         response = await call_next(request)
         return response
     

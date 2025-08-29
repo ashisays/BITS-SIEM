@@ -10,7 +10,7 @@ Generates realistic multi-tenant test data to exercise:
 
 Usage:
   python seed_test_data.py              # Seed all known tenants
-  python seed_test_data.py acme-corp    # Seed specific tenant
+  python seed_test_data.py dummy-tech    # Seed specific tenant
 
 Notes:
 - Run from the api/ directory so local imports resolve (same as init_database.py).
@@ -219,7 +219,7 @@ def seed_for_tenant(db, tenant_id: str) -> None:
         return
 
     # Choose or create demo users in this tenant
-    primary_email = "user@acme.com" if tenant_id == "acme-corp" else f"user@{tenant_id}.com"
+    primary_email = "user@dummytech.com" if tenant_id == "dummy-tech" else f"user@{tenant_id}.com"
     user = db.query(User).filter(User.tenant_id == tenant_id, User.email == primary_email).first()
     if not user:
         user = get_or_create_user(db, tenant_id, primary_email, name=f"{tenant.name} User", role="user")
