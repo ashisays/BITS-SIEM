@@ -2,7 +2,7 @@ const BASE_URL = 'http://localhost:8000/api'
 
 // Helper function to make API requests with authentication
 const makeRequest = async (url, options = {}) => {
-  const token = localStorage.getItem('jwt')
+  const token = localStorage.getItem('jwt') || localStorage.getItem('token')
   const csrfToken = localStorage.getItem('csrf_token')
   const headers = {
     'Content-Type': 'application/json',
@@ -78,6 +78,35 @@ export default {
     return makeRequest('/notifications/read-all', {
       method: 'PATCH',
     })
+  },
+  updateNotificationStatus(notificationId, status) {
+    return makeRequest(`/notifications/${notificationId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+  },
+  deleteNotification(notificationId) {
+    return makeRequest(`/notifications/${notificationId}`, {
+      method: 'DELETE',
+    })
+  },
+  suppressNotification(notificationId) {
+    return makeRequest(`/notifications/${notificationId}/suppress`, {
+      method: 'PATCH',
+    })
+  },
+  resolveNotification(notificationId) {
+    return makeRequest(`/notifications/${notificationId}/resolve`, {
+      method: 'PATCH',
+    })
+  },
+  investigateNotification(notificationId) {
+    return makeRequest(`/notifications/${notificationId}/investigate`, {
+      method: 'PATCH',
+    })
+  },
+  getNotificationStats() {
+    return makeRequest('/notifications/stats')
   },
   getReports() {
     return makeRequest('/reports')

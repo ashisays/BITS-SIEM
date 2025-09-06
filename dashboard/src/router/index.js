@@ -4,7 +4,7 @@ import Register from '../components/Register.vue'
 import Dashboard from '../views/Dashboard.vue'
 import Sources from '../views/Sources.vue'
 import SourceConfig from '../components/SourceConfig.vue'
-import Notifications from '../components/Notifications.vue'
+
 import DiagnosisReports from '../components/DiagnosisReports.vue'
 import SiemSetup from '../components/SiemSetup.vue'
 
@@ -44,12 +44,7 @@ const routes = [
     component: Sources,
     meta: { requiresAuth: true, requiresTenant: true }
   },
-  {
-    path: '/tenant/:tenantId/notifications',
-    name: 'TenantNotifications', 
-    component: Notifications,
-    meta: { requiresAuth: true, requiresTenant: true }
-  },
+
   {
     path: '/tenant/:tenantId/reports',
     name: 'TenantReports',
@@ -80,14 +75,7 @@ const routes = [
     },
     meta: { requiresAuth: true }
   },
-  { 
-    path: '/notifications', 
-    redirect: to => {
-      const tenantId = getCurrentTenantId()
-      return tenantId ? `/tenant/${tenantId}/notifications` : '/login'
-    },
-    meta: { requiresAuth: true }
-  },
+
   { 
     path: '/reports', 
     redirect: to => {

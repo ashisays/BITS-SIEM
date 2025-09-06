@@ -1,611 +1,853 @@
 <template>
   <div class="reports-container">
+    <!-- Header -->
     <div class="reports-header">
-      <h2>Diagnosis Reports</h2>
-      <div class="reports-controls">
-        <div class="filter-controls">
-          <select v-model="selectedType" class="filter-select">
-            <option value="">All Types</option>
-            <option value="security">Security</option>
-            <option value="threat">Threat</option>
-            <option value="performance">Performance</option>
-            <option value="compliance">Compliance</option>
+      <div class="header-left">
+        <h1 class="reports-title">
+          <i class="fas fa-shield-alt"></i>
+          Security Reports
+        </h1>
+        <p class="reports-subtitle">Real-time security alerts and analysis from database</p>
+      </div>
+      <div class="header-right">
+        <div class="last-updated">
+          <i class="fas fa-clock"></i>
+          Last updated: {{ lastUpdated }}
+        </div>
+        <div class="refresh-controls">
+          <button @click="refreshData" :disabled="alertsLoading" class="refresh-btn">
+            <i class="fas fa-sync-alt" :class="{ 'spinning': alertsLoading }"></i>
+            {{ alertsLoading ? 'Refreshing...' : 'Refresh' }}
+          </button>
+          <select v-model="autoRefreshInterval" @change="setupAutoRefresh" class="refresh-select">
+            <option value="0">Auto-refresh: Off</option>
+            <option value="30000">Auto-refresh: 30s</option>
+            <option value="60000">Auto-refresh: 1min</option>
+            <option value="300000">Auto-refresh: 5min</option>
+            <option value="600000">Auto-refresh: 10min</option>
           </select>
-          <input 
-            v-model="searchQuery" 
-            type="text" 
-            placeholder="Search reports..." 
-            class="search-input"
-          />
         </div>
-        <button @click="generateReport" class="btn btn-primary">
-          Generate Report
+      </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+      <div class="summary-card total">
+        <div class="card-icon">
+          <i class="fas fa-list-ul"></i>
+        </div>
+        <div class="card-content">
+          <div class="card-value">{{ alerts.length }}</div>
+          <div class="card-label">Total Alerts</div>
+        </div>
+      </div>
+      <div class="summary-card critical">
+        <div class="card-icon">
+          <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="card-content">
+          <div class="card-value">{{ criticalCount }}</div>
+          <div class="card-label">Critical</div>
+        </div>
+      </div>
+      <div class="summary-card warning">
+        <div class="card-icon">
+          <i class="fas fa-exclamation-circle"></i>
+        </div>
+        <div class="card-content">
+          <div class="card-value">{{ warningCount }}</div>
+          <div class="card-label">High/Warning</div>
+        </div>
+      </div>
+      <div class="summary-card info">
+        <div class="card-icon">
+          <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="card-content">
+          <div class="card-value">{{ infoCount }}</div>
+          <div class="card-label">Medium/Low</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Controls -->
+    <div class="export-controls">
+      <h3>Export Security Reports</h3>
+      <div class="export-buttons">
+        <button @click="exportData('today')" class="export-btn">
+          <i class="fas fa-download"></i>
+          Today
         </button>
-        <button @click="refreshReports" class="btn btn-outline">
-          <span class="refresh-icon">🔄</span>
+        <button @click="exportData('yesterday')" class="export-btn">
+          <i class="fas fa-download"></i>
+          Yesterday
+        </button>
+        <button @click="exportData('last7days')" class="export-btn">
+          <i class="fas fa-download"></i>
+          Last 7 Days
         </button>
       </div>
     </div>
 
-    <div class="reports-stats">
-      <div class="stat-card">
-        <span class="stat-number">{{ totalReports }}</span>
-        <span class="stat-label">Total Reports</span>
+    <!-- Alerts Table -->
+    <div class="alerts-section">
+      <div class="section-header">
+        <h3>Security Alerts</h3>
+        <div class="alerts-meta">
+          <span>{{ filteredAlerts.length }} alerts found</span>
+          <span v-if="autoRefreshInterval > 0" class="auto-refresh-status">
+            <i class="fas fa-sync-alt spinning"></i>
+            Auto-refreshing every {{ formatRefreshInterval(autoRefreshInterval) }}
+          </span>
+        </div>
       </div>
-      <div class="stat-card security">
-        <span class="stat-number">{{ securityCount }}</span>
-        <span class="stat-label">Security</span>
+      
+      <div v-if="alertsLoading" class="alerts-loading">
+        <div class="loading-spinner"></div>
+        <span>Loading security alerts...</span>
       </div>
-      <div class="stat-card threat">
-        <span class="stat-number">{{ threatCount }}</span>
-        <span class="stat-label">Threat</span>
+      
+      <div v-else-if="!alerts.length" class="alerts-empty">
+        <div class="empty-icon">🔍</div>
+        <h4>No Security Alerts Found</h4>
+        <p>No security alerts are currently available. This could mean:</p>
+        <ul>
+          <li>No security events have been detected</li>
+          <li>Database connection issues</li>
+          <li>Tenant has no alert permissions</li>
+        </ul>
       </div>
-      <div class="stat-card recent">
-        <span class="stat-number">{{ recentCount }}</span>
-        <span class="stat-label">This Week</span>
-      </div>
-    </div>
-
-    <div class="reports-list" v-if="filteredReports.length > 0">
-      <div 
-        v-for="report in paginatedReports" 
-        :key="report.id" 
-        class="report-card"
-        :class="report.type"
-        @click="viewReport(report)"
-      >
-        <div class="report-header">
-          <div class="report-type">
-            <span class="type-icon" :class="report.type">
-              {{ getTypeIcon(report.type) }}
+      
+      <div v-else class="alerts-table-container">
+        <div class="alerts-table">
+          <div class="alerts-header">
+            <span class="col-severity">Severity</span>
+            <span class="col-timestamp">Timestamp</span>
+            <span class="col-type">Alert Type</span>
+            <span class="col-title">Title</span>
+            <span class="col-ip">Source IP</span>
+            <span class="col-username">Username</span>
+            <span class="col-confidence">Confidence</span>
+            <span class="col-status">Status</span>
+            <span class="col-actions">Actions</span>
+          </div>
+          
+          <div v-for="alert in paginatedAlerts" :key="alert.id" class="alerts-row" @click="openAlert(alert)" :title="'Click to view detailed information for alert #' + alert.id">
+            <span class="col-severity">
+              <span class="severity-badge" :class="alert.severity">{{ alert.severity.toUpperCase() }}</span>
             </span>
-            <span class="type-text">{{ report.type }}</span>
-          </div>
-          <div class="report-meta">
-            <span class="report-date">{{ formatDate(report.date) }}</span>
-            <span class="report-author">{{ report.generatedBy }}</span>
+            <span class="col-timestamp">{{ formatDate(alert.created_at) }}</span>
+            <span class="col-type">{{ alert.alert_type }}</span>
+            <span class="col-title" :title="alert.description">{{ alert.title }}</span>
+            <span class="col-ip">{{ alert.source_ip || 'N/A' }}</span>
+            <span class="col-username">{{ alert.username || 'N/A' }}</span>
+            <span class="col-confidence">
+              <div class="confidence-bar">
+                <div class="confidence-fill" :style="{ width: Math.round((alert.confidence_score || 0) * 100) + '%' }"></div>
+                <span class="confidence-text">{{ Math.round((alert.confidence_score || 0) * 100) }}%</span>
+              </div>
+            </span>
+            <span class="col-status">
+              <span class="status-badge" :class="alert.status">{{ alert.status }}</span>
+            </span>
+            <span class="col-actions" @click.stop>
+              <button @click="openAlert(alert)" class="action-btn details" title="View Details">
+                <i class="fas fa-eye"></i>
+              </button>
+            </span>
           </div>
         </div>
-        <div class="report-content">
-          <h3 class="report-title">{{ report.title }}</h3>
-          <p class="report-summary">{{ report.summary }}</p>
-          <div v-if="report.data" class="report-data">
-            <div v-for="(value, key) in report.data" :key="key" class="data-item">
-              <span class="data-key">{{ key }}:</span>
-              <span class="data-value">{{ value }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="report-actions">
-          <button @click.stop="viewReport(report)" class="btn btn-outline btn-sm">
-            View Details
-          </button>
-          <button @click.stop="exportReport(report)" class="btn btn-secondary btn-sm">
-            Export
-          </button>
+        
+        <!-- Pagination -->
+        <div v-if="totalPages > 1" class="alerts-pagination">
+          <button @click="currentPage--" :disabled="currentPage === 1" class="pagination-btn">Previous</button>
+          <span class="pagination-info">
+            Page {{ currentPage }} of {{ totalPages }} 
+            (showing {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, filteredAlerts.length) }} of {{ filteredAlerts.length }} alerts)
+          </span>
+          <button @click="currentPage++" :disabled="currentPage === totalPages" class="pagination-btn">Next</button>
         </div>
       </div>
     </div>
 
-    <div v-else class="empty-state">
-      <div class="empty-icon">📋</div>
-      <h3>No reports found</h3>
-      <p>No reports match your current filters. Generate a new report to get started.</p>
-    </div>
-
-    <!-- Pagination -->
-    <div v-if="totalPages > 1" class="pagination">
-      <button 
-        @click="currentPage--" 
-        :disabled="currentPage === 1"
-        class="pagination-btn"
-      >
-        Previous
-      </button>
-      <span class="pagination-info">
-        Page {{ currentPage }} of {{ totalPages }}
-      </span>
-      <button 
-        @click="currentPage++" 
-        :disabled="currentPage === totalPages"
-        class="pagination-btn"
-      >
-        Next
-      </button>
-    </div>
-
-    <!-- Report Detail Modal -->
-    <div v-if="selectedReport" class="modal-overlay" @click="closeModal">
-      <div class="modal" @click.stop>
+    <!-- Alert Details Modal -->
+    <div v-if="selectedAlert" class="modal-overlay" @click="closeAlert">
+      <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h3>{{ selectedReport.title }}</h3>
-          <button @click="closeModal" class="modal-close">×</button>
+          <h3>Alert Details</h3>
+          <button @click="closeAlert" class="modal-close">
+            <i class="fas fa-times"></i>
+          </button>
         </div>
-        <div class="modal-content">
-          <div class="report-detail-meta">
-            <div class="meta-item">
-              <span class="meta-label">Type:</span>
-              <span class="meta-value">{{ selectedReport.type }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Generated:</span>
-              <span class="meta-value">{{ formatDate(selectedReport.date) }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">By:</span>
-              <span class="meta-value">{{ selectedReport.generatedBy }}</span>
-            </div>
-          </div>
-          <div class="report-detail-summary">
-            <h4>Summary</h4>
-            <p>{{ selectedReport.summary }}</p>
-          </div>
-          <div v-if="selectedReport.data" class="report-detail-data">
-            <h4>Data</h4>
-            <div class="data-grid">
-              <div v-for="(value, key) in selectedReport.data" :key="key" class="data-grid-item">
-                <span class="data-grid-key">{{ key }}</span>
-                <span class="data-grid-value">{{ value }}</span>
+        <div class="modal-body">
+          <div class="alert-details">
+            <div class="detail-group">
+              <div class="detail-row">
+                <strong>Alert ID:</strong> {{ selectedAlert.id }}
+              </div>
+              <div class="detail-row">
+                <strong>Title:</strong> {{ selectedAlert.title }}
+              </div>
+              <div class="detail-row">
+                <strong>Alert Type:</strong> {{ selectedAlert.alert_type }}
+              </div>
+              <div class="detail-row">
+                <strong>Severity:</strong> 
+                <span class="severity-badge" :class="selectedAlert.severity">{{ selectedAlert.severity.toUpperCase() }}</span>
+              </div>
+              <div class="detail-row">
+                <strong>Status:</strong> 
+                <span class="status-badge" :class="selectedAlert.status">{{ selectedAlert.status }}</span>
+              </div>
+              <div class="detail-row">
+                <strong>Confidence Score:</strong> {{ Math.round((selectedAlert.confidence_score || 0) * 100) }}%
+              </div>
+              <div class="detail-row">
+                <strong>Source IP:</strong> {{ selectedAlert.source_ip || 'N/A' }}
+              </div>
+              <div class="detail-row">
+                <strong>Username:</strong> {{ selectedAlert.username || 'N/A' }}
+              </div>
+              <div class="detail-row">
+                <strong>Created:</strong> {{ formatDate(selectedAlert.created_at) }}
+              </div>
+              <div class="detail-row" v-if="selectedAlert.description">
+                <strong>Description:</strong>
+                <p class="description-text">{{ selectedAlert.description }}</p>
               </div>
             </div>
           </div>
-        </div>
-        <div class="modal-actions">
-          <button @click="exportReport(selectedReport)" class="btn btn-primary">
-            Export Report
-          </button>
-          <button @click="closeModal" class="btn btn-secondary">
-            Close
-          </button>
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted } from 'vue'
-import api from '../services/api'
+<script>
+import axios from 'axios'
 
-// Reactive data
-const reports = ref([])
-const selectedType = ref('')
-const searchQuery = ref('')
-const currentPage = ref(1)
-const itemsPerPage = 8
-const loading = ref(false)
-const selectedReport = ref(null)
-
-// Computed properties
-const filteredReports = computed(() => {
-  let filtered = reports.value
-
-  if (selectedType.value) {
-    filtered = filtered.filter(r => r.type === selectedType.value)
-  }
-
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(r => 
-      r.title.toLowerCase().includes(query) ||
-      r.summary.toLowerCase().includes(query)
-    )
-  }
-
-  return filtered.sort((a, b) => new Date(b.date) - new Date(a.date))
-})
-
-const paginatedReports = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage
-  const end = start + itemsPerPage
-  return filteredReports.value.slice(start, end)
-})
-
-const totalPages = computed(() => {
-  return Math.ceil(filteredReports.value.length / itemsPerPage)
-})
-
-const totalReports = computed(() => reports.value.length)
-const securityCount = computed(() => reports.value.filter(r => r.type === 'security').length)
-const threatCount = computed(() => reports.value.filter(r => r.type === 'threat').length)
-const recentCount = computed(() => {
-  const weekAgo = new Date()
-  weekAgo.setDate(weekAgo.getDate() - 7)
-  return reports.value.filter(r => new Date(r.date) >= weekAgo).length
-})
-
-// Methods
-const fetchReports = async () => {
-  try {
-    loading.value = true
-    const res = await api.getReports()
-    reports.value = res.data || res
-  } catch (error) {
-    console.error('Error fetching reports:', error)
-    // Fallback data
-    reports.value = [
-      {
-        id: 1,
-        title: "Security Summary Report",
-        summary: "Weekly security overview and threat analysis",
-        type: "security",
-        date: new Date().toISOString().split('T')[0],
-        generatedBy: "system",
-        data: { total_events: 1250, threats_detected: 3, incidents_resolved: 2 }
-      },
-      {
-        id: 2,
-        title: "Threat Analysis Report",
-        summary: "Analysis of recent security threats and vulnerabilities",
-        type: "threat",
-        date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-        generatedBy: "admin",
-        data: { threats_detected: 8, high_risk: 2, medium_risk: 4, low_risk: 2 }
-      },
-      {
-        id: 3,
-        title: "Performance Metrics Report",
-        summary: "System performance and resource utilization analysis",
-        type: "performance",
-        date: new Date(Date.now() - 172800000).toISOString().split('T')[0],
-        generatedBy: "system",
-        data: { avg_response_time: "45ms", uptime: "99.9%", cpu_usage: "23%" }
+export default {
+  name: 'DiagnosisReports',
+  data() {
+    return {
+      alertsLoading: false,
+      alerts: [],
+      selectedAlert: null,
+      currentPage: 1,
+      itemsPerPage: 20,
+      autoRefreshInterval: 0,
+      autoRefreshTimer: null,
+      lastUpdated: ''
+    }
+  },
+  computed: {
+    filteredAlerts() {
+      return this.alerts
+    },
+    paginatedAlerts() {
+      const start = (this.currentPage - 1) * this.itemsPerPage
+      const end = start + this.itemsPerPage
+      return this.filteredAlerts.slice(start, end)
+    },
+    totalPages() {
+      return Math.ceil(this.filteredAlerts.length / this.itemsPerPage)
+    },
+    criticalCount() {
+      return this.alerts.filter(a => a.severity === 'critical').length
+    },
+    warningCount() {
+      return this.alerts.filter(a => ['high', 'warning', 'medium'].includes(a.severity)).length
+    },
+    infoCount() {
+      return this.alerts.filter(a => ['low', 'info'].includes(a.severity)).length
+    }
+  },
+  mounted() {
+    this.refreshData()
+  },
+  beforeUnmount() {
+    if (this.autoRefreshTimer) {
+      clearInterval(this.autoRefreshTimer)
+    }
+  },
+  methods: {
+    async refreshData() {
+      this.alertsLoading = true
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}')
+        const tenantId = user.tenantId || 'demo-org'
+        
+        // Try to fetch from detection API first, fallback to main API
+        let response
+        try {
+          response = await axios.get(`/api/detection/alerts?tenant_id=${tenantId}&limit=1000`)
+        } catch (error) {
+          console.warn('Detection API not available, using main API')
+          response = await axios.get('/api/notifications')
+        }
+        
+        this.alerts = response.data || []
+        this.updateLastUpdated()
+      } catch (error) {
+        console.error('Error loading alerts:', error)
+        this.alerts = []
+      } finally {
+        this.alertsLoading = false
       }
-    ]
-  } finally {
-    loading.value = false
+    },
+    setupAutoRefresh() {
+      if (this.autoRefreshTimer) {
+        clearInterval(this.autoRefreshTimer)
+        this.autoRefreshTimer = null
+      }
+      
+      if (this.autoRefreshInterval > 0) {
+        this.autoRefreshTimer = setInterval(() => {
+          this.refreshData()
+        }, this.autoRefreshInterval)
+      }
+    },
+    openAlert(alert) {
+      this.selectedAlert = alert
+    },
+    closeAlert() {
+      this.selectedAlert = null
+    },
+    formatRefreshInterval(interval) {
+      if (interval >= 60000) {
+        return Math.floor(interval / 60000) + 'min'
+      }
+      return Math.floor(interval / 1000) + 's'
+    },
+    async exportData(period) {
+      try {
+        let startDate, endDate
+        const now = new Date()
+        
+        switch(period) {
+          case 'today':
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+            endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+            break
+          case 'yesterday':
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+            endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+            break
+          case 'last7days':
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7)
+            endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+            break
+        }
+        
+        const filteredAlerts = this.alerts.filter(alert => {
+          const alertDate = new Date(alert.created_at)
+          return alertDate >= startDate && alertDate < endDate
+        })
+        
+        const csvContent = this.generateCSV(filteredAlerts)
+        const blob = new Blob([csvContent], { type: 'text/csv' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `security-report-${period}-${new Date().toISOString().split('T')[0]}.csv`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      } catch (error) {
+        console.error('Error exporting reports:', error)
+        alert('Failed to export reports. Please try again.')
+      }
+    },
+    generateCSV(alerts) {
+      const headers = ['ID', 'Timestamp', 'Severity', 'Type', 'Title', 'Source IP', 'Username', 'Status', 'Confidence']
+      const rows = alerts.map(alert => [
+        alert.id,
+        alert.created_at,
+        alert.severity,
+        alert.alert_type || alert.type || 'N/A',
+        alert.title || alert.message || 'N/A',
+        alert.source_ip || 'N/A',
+        alert.username || 'N/A',
+        alert.status || 'open',
+        alert.confidence_score ? Math.round(alert.confidence_score * 100) + '%' : 'N/A'
+      ])
+      
+      return [headers, ...rows]
+        .map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
+        .join('\n')
+    },
+    getSeverityIcon(severity) {
+      const icons = {
+        critical: '🔴',
+        high: '🟠',
+        medium: '🟡',
+        warning: '🟡',
+        low: '🔵',
+        info: '🔵'
+      }
+      return icons[severity] || '⚪'
+    },
+    formatTimestamp(timestamp) {
+      if (!timestamp) return 'N/A'
+      return new Date(timestamp).toLocaleTimeString()
+    },
+    formatDate(timestamp) {
+      if (!timestamp) return 'N/A'
+      return new Date(timestamp).toLocaleString()
+    },
+    updateLastUpdated() {
+      this.lastUpdated = new Date().toLocaleString()
+    }
   }
 }
-
-const generateReport = async () => {
-  try {
-    const res = await api.generateReport('security')
-    await fetchReports()
-  } catch (error) {
-    console.error('Error generating report:', error)
-    alert('Failed to generate report. Please try again.')
-  }
-}
-
-const refreshReports = () => {
-  fetchReports()
-}
-
-const viewReport = (report) => {
-  selectedReport.value = report
-}
-
-const closeModal = () => {
-  selectedReport.value = null
-}
-
-const exportReport = (report) => {
-  // Create a simple text export
-  const content = `
-Report: ${report.title}
-Type: ${report.type}
-Date: ${formatDate(report.date)}
-Generated By: ${report.generatedBy}
-
-Summary:
-${report.summary}
-
-Data:
-${Object.entries(report.data || {}).map(([key, value]) => `${key}: ${value}`).join('\n')}
-  `.trim()
-
-  const blob = new Blob([content], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${report.title.replace(/\s+/g, '_')}_${formatDate(report.date)}.txt`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
-
-const getTypeIcon = (type) => {
-  const icons = {
-    security: '🔒',
-    threat: '⚠️',
-    performance: '⚡',
-    compliance: '📋'
-  }
-  return icons[type] || '📄'
-}
-
-const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-onMounted(() => {
-  fetchReports()
-})
 </script>
 
 <style scoped>
+/* Container and Layout */
 .reports-container {
-  padding: 24px;
-  max-width: 1200px;
+  padding: 20px;
+  max-width: 1400px;
   margin: 0 auto;
+  background: #f8f9fa;
+  min-height: 100vh;
 }
 
+/* Header */
 .reports-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
+  margin-bottom: 30px;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
 }
 
-.reports-header h2 {
+.reports-title {
   margin: 0;
   color: #333;
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.reports-controls {
+  font-size: 28px;
   display: flex;
-  gap: 12px;
   align-items: center;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.filter-controls {
-  display: flex;
-  gap: 8px;
+.reports-title i {
+  color: #007bff;
 }
 
-.filter-select {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: white;
-  font-size: 14px;
-}
-
-.search-input {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: white;
-  font-size: 14px;
-  min-width: 200px;
-}
-
-.refresh-icon {
-  font-size: 16px;
-}
-
-.reports-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  background: white;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e1e5e9;
-  text-align: center;
-  transition: all 0.2s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.stat-card.security {
-  border-left: 4px solid #28a745;
-}
-
-.stat-card.threat {
-  border-left: 4px solid #dc3545;
-}
-
-.stat-card.recent {
-  border-left: 4px solid #007bff;
-}
-
-.stat-number {
-  display: block;
-  font-size: 24px;
-  font-weight: bold;
-  color: #333;
-}
-
-.stat-label {
-  display: block;
-  font-size: 12px;
+.reports-subtitle {
+  margin: 5px 0 0 0;
   color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 14px;
 }
 
-.reports-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  gap: 16px;
-}
-
-.report-card {
-  background: white;
-  border: 1px solid #e1e5e9;
-  border-radius: 8px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.report-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.report-card.security {
-  border-left: 4px solid #28a745;
-}
-
-.report-card.threat {
-  border-left: 4px solid #dc3545;
-}
-
-.report-card.performance {
-  border-left: 4px solid #ffc107;
-}
-
-.report-card.compliance {
-  border-left: 4px solid #17a2b8;
-}
-
-.report-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.report-type {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.type-icon {
-  font-size: 16px;
-}
-
-.type-text {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.report-meta {
+.header-right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: 10px;
 }
 
-.report-date {
+.last-updated {
   font-size: 12px;
   color: #666;
-}
-
-.report-author {
-  font-size: 11px;
-  color: #999;
-}
-
-.report-content {
-  margin-bottom: 12px;
-}
-
-.report-title {
-  margin: 0 0 8px 0;
-  color: #333;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.report-summary {
-  margin: 0 0 8px 0;
-  color: #666;
-  line-height: 1.4;
-  font-size: 14px;
-}
-
-.report-data {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 5px;
 }
 
-.data-item {
-  background: #f8f9fa;
-  padding: 4px 8px;
+.refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.refresh-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #007bff;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-select {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 12px;
+  background: white;
 }
 
-.data-key {
-  font-weight: 600;
-  color: #666;
+.spinning {
+  animation: spin 1s linear infinite;
 }
 
-.data-value {
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.summary-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.summary-card.total {
+  border-left: 4px solid #007bff;
+}
+
+.summary-card.critical {
+  border-left: 4px solid #dc3545;
+}
+
+.summary-card.warning {
+  border-left: 4px solid #ffc107;
+}
+
+.summary-card.info {
+  border-left: 4px solid #28a745;
+}
+
+.card-icon {
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f8f9fa;
+}
+
+.card-content {
+  flex: 1;
+}
+
+.card-value {
+  font-size: 32px;
+  font-weight: bold;
+  margin: 0;
   color: #333;
 }
 
-.report-actions {
+.card-label {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+/* Export Controls */
+.export-controls {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  margin-bottom: 30px;
+}
+
+.export-controls h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.export-buttons {
   display: flex;
+  gap: 10px;
+}
+
+.export-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  background: #28a745;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
   gap: 8px;
-  justify-content: flex-end;
 }
 
-.btn-sm {
-  padding: 6px 12px;
-  font-size: 12px;
+.export-btn:hover {
+  background: #218838;
 }
 
-.empty-state {
+/* Alerts Section */
+.alerts-section {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.section-header {
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 20px;
+}
+
+.alerts-meta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 14px;
+  color: #666;
+}
+
+.auto-refresh-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #28a745;
+}
+
+/* Loading and Empty States */
+.alerts-loading {
+  padding: 60px 20px;
   text-align: center;
-  padding: 48px 24px;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 15px;
+}
+
+.alerts-empty {
+  padding: 60px 20px;
+  text-align: center;
   color: #666;
 }
 
 .empty-icon {
   font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
+  margin-bottom: 20px;
 }
 
-.empty-state h3 {
-  margin: 0 0 8px 0;
+.alerts-empty h4 {
+  margin: 0 0 10px 0;
   color: #333;
 }
 
-.empty-state p {
-  margin: 0;
-  font-size: 14px;
+.alerts-empty ul {
+  text-align: left;
+  display: inline-block;
+  margin: 15px 0;
 }
 
-.pagination {
+/* Alerts Table */
+.alerts-table-container {
+  overflow-x: auto;
+}
+
+.alerts-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.alerts-header {
+  display: grid;
+  grid-template-columns: 100px 150px 120px 1fr 120px 100px 100px 80px 80px;
+  background: #f8f9fa;
+  font-weight: 600;
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.alerts-header > span {
+  padding: 15px 10px;
+  border-right: 1px solid #dee2e6;
+}
+
+.alerts-row {
+  display: grid;
+  grid-template-columns: 100px 150px 120px 1fr 120px 100px 100px 80px 80px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.alerts-row:hover {
+  background: #f8f9fa;
+}
+
+.alerts-row > span {
+  padding: 12px 10px;
+  border-right: 1px solid #eee;
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 16px;
-  margin-top: 24px;
-  padding: 16px;
+  font-size: 13px;
+}
+
+.col-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Badges */
+.severity-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: white;
+}
+
+.severity-badge.critical {
+  background: #dc3545;
+}
+
+.severity-badge.high {
+  background: #fd7e14;
+}
+
+.severity-badge.medium,
+.severity-badge.warning {
+  background: #ffc107;
+  color: #212529;
+}
+
+.severity-badge.low,
+.severity-badge.info {
+  background: #28a745;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.open {
+  background: #fef3cd;
+  color: #856404;
+}
+
+.status-badge.resolved {
+  background: #d1e7dd;
+  color: #0f5132;
+}
+
+.status-badge.investigating {
+  background: #cff4fc;
+  color: #055160;
+}
+
+/* Confidence Bar */
+.confidence-bar {
+  position: relative;
+  width: 60px;
+  height: 16px;
+  background: #e9ecef;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+  transition: width 0.3s ease;
+}
+
+.confidence-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Action Buttons */
+.action-btn {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: #007bff;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.action-btn:hover {
+  background: #0056b3;
+}
+
+/* Pagination */
+.alerts-pagination {
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #eee;
 }
 
 .pagination-btn {
   padding: 8px 16px;
   border: 1px solid #ddd;
-  background: white;
   border-radius: 4px;
+  background: white;
   cursor: pointer;
-  transition: all 0.2s ease;
+  font-size: 14px;
 }
 
 .pagination-btn:hover:not(:disabled) {
   background: #f8f9fa;
-  border-color: #007bff;
 }
 
 .pagination-btn:disabled {
@@ -618,35 +860,36 @@ onMounted(() => {
   color: #666;
 }
 
-/* Modal Styles */
+/* Modal */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0,0,0,0.5);
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   z-index: 1000;
 }
 
-.modal {
+.modal-content {
   background: white;
   border-radius: 8px;
   max-width: 600px;
   width: 90%;
   max-height: 80vh;
-  overflow-y: auto;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
 }
 
 .modal-header {
+  padding: 20px;
+  border-bottom: 1px solid #eee;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid #e1e5e9;
 }
 
 .modal-header h3 {
@@ -655,8 +898,8 @@ onMounted(() => {
 }
 
 .modal-close {
-  background: none;
   border: none;
+  background: none;
   font-size: 24px;
   cursor: pointer;
   color: #666;
@@ -672,121 +915,59 @@ onMounted(() => {
   color: #333;
 }
 
-.modal-content {
+.modal-body {
   padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
-.report-detail-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 4px;
-}
-
-.meta-item {
+.detail-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 15px;
 }
 
-.meta-label {
-  font-size: 12px;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.meta-value {
-  font-size: 14px;
-  color: #333;
-  font-weight: 500;
-}
-
-.report-detail-summary {
-  margin-bottom: 20px;
-}
-
-.report-detail-summary h4 {
-  margin: 0 0 8px 0;
-  color: #333;
-  font-size: 16px;
-}
-
-.report-detail-summary p {
-  margin: 0;
-  color: #666;
-  line-height: 1.5;
-}
-
-.report-detail-data {
-  margin-bottom: 20px;
-}
-
-.report-detail-data h4 {
-  margin: 0 0 12px 0;
-  color: #333;
-  font-size: 16px;
-}
-
-.data-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.data-grid-item {
+.detail-row {
   display: flex;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #f8f9fa;
-  border-radius: 4px;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-.data-grid-key {
+.detail-row strong {
+  min-width: 140px;
+  color: #333;
   font-weight: 600;
+}
+
+.description-text {
+  margin: 5px 0 0 0;
+  line-height: 1.5;
   color: #666;
 }
 
-.data-grid-value {
-  color: #333;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  padding: 20px;
-  border-top: 1px solid #e1e5e9;
-}
-
+/* Responsive */
 @media (max-width: 768px) {
-  .reports-container {
-    padding: 16px;
-  }
-  
   .reports-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 20px;
   }
   
-  .reports-controls {
-    justify-content: space-between;
-  }
-  
-  .reports-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .reports-list {
+  .summary-cards {
     grid-template-columns: 1fr;
   }
   
-  .modal {
-    width: 95%;
-    margin: 20px;
+  .export-buttons {
+    flex-wrap: wrap;
+  }
+  
+  .alerts-table {
+    font-size: 12px;
+  }
+  
+  .alerts-table th,
+  .alerts-table td {
+    padding: 8px;
   }
 }
-</style> 
+</style>

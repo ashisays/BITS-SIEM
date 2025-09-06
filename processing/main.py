@@ -12,10 +12,14 @@ from datetime import datetime
 import structlog
 from prometheus_client import Counter, Histogram, Gauge, start_http_server
 import uvloop
+import json
+import socket
+import threading
 
 from config import config
 from stream_processor import StreamProcessor, ProcessedEvent
-from threat_detection import threat_detector, ThreatAlert
+from threat_detection import threat_detector
+from threat_models import ThreatAlert
 from alert_manager import alert_manager
 
 # Configure structured logging
@@ -82,6 +86,8 @@ class ProcessingService:
     def __init__(self):
         self.stream_processor = None
         self.running = False
+        self.health_server = None
+        self.health_thread = None
         self.stats = {
             'start_time': datetime.utcnow(),
             'events_processed': 0,
@@ -121,6 +127,9 @@ class ProcessingService:
             # Start Prometheus metrics server
             start_http_server(config.metrics_port)
             logger.info(f"Metrics server started on port {config.metrics_port}")
+            
+            # Start health check HTTP server
+            self.start_health_server()
             
             # Initialize alert manager
             await alert_manager.initialize()
@@ -339,6 +348,69 @@ class ProcessingService:
         
         return health_status
     
+    def _simple_health_server(self):
+        """Simple HTTP server for health checks"""
+        import http.server
+        import socketserver
+        
+        class HealthHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == '/health':
+                    try:
+                        # Simple health check - just return OK if service is running
+                        health_data = {
+                            'status': 'healthy',
+                            'timestamp': datetime.utcnow().isoformat(),
+                            'service': 'bits-siem-processing'
+                        }
+                        
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps(health_data).encode())
+                    except Exception as e:
+                        self.send_response(503)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        error_data = {
+                            'status': 'unhealthy',
+                            'error': str(e),
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+                        self.wfile.write(json.dumps(error_data).encode())
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+            
+            def log_message(self, format, *args):
+                # Suppress default logging
+                pass
+        
+        try:
+            with socketserver.TCPServer(("", 8082), HealthHandler) as httpd:
+                self.health_server = httpd
+                logger.info("Health check server started on port 8082")
+                httpd.serve_forever()
+        except Exception as e:
+            logger.error(f"Health server error: {e}")
+    
+    def start_health_server(self):
+        """Start health server in background thread"""
+        try:
+            self.health_thread = threading.Thread(target=self._simple_health_server, daemon=True)
+            self.health_thread.start()
+        except Exception as e:
+            logger.error(f"Failed to start health server: {e}")
+    
+    def stop_health_server(self):
+        """Stop health server"""
+        try:
+            if self.health_server:
+                self.health_server.shutdown()
+                logger.info("Health server stopped")
+        except Exception as e:
+            logger.error(f"Error stopping health server: {e}")
+    
     async def _metrics_collection_loop(self):
         """Collect and update metrics periodically"""
         while self.running:
@@ -382,6 +454,9 @@ class ProcessingService:
             await self.stream_processor.stop()
         
         await threat_detector.stop()
+        
+        # Stop health server
+        self.stop_health_server()
         
         logger.info("Processing service stopped")
     

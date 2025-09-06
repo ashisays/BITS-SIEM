@@ -1,0 +1,113 @@
+{
+  "total_tests": 10,
+  "passed": 10,
+  "failed": 0,
+  "test_details": [
+    {
+      "name": "API Service Connectivity",
+      "passed": true,
+      "details": "API health check at http://localhost:8000",
+      "data": {
+        "status_code": 200
+      },
+      "timestamp": "2025-09-04T16:15:15.213309"
+    },
+    {
+      "name": "Dashboard Service Connectivity",
+      "passed": true,
+      "details": "Dashboard at http://localhost:3000",
+      "data": {
+        "status_code": 200
+      },
+      "timestamp": "2025-09-04T16:15:15.221867"
+    },
+    {
+      "name": "Syslog Ingestion Connectivity",
+      "passed": true,
+      "details": "Syslog service at localhost:514",
+      "data": {},
+      "timestamp": "2025-09-04T16:15:15.222579"
+    },
+    {
+      "name": "Dashboard Authentication",
+      "passed": true,
+      "details": "Successfully authenticated as admin@demo.com",
+      "data": {
+        "has_token": true,
+        "has_csrf": true
+      },
+      "timestamp": "2025-09-04T16:15:15.276116"
+    },
+    {
+      "name": "Brute Force Attack Simulation",
+      "passed": true,
+      "details": "Sent 15 brute force attack events",
+      "data": {
+        "attack_count": 15,
+        "target_users": 3,
+        "source_ips": 3
+      },
+      "timestamp": "2025-09-04T16:15:16.816203"
+    },
+    {
+      "name": "Brute Force Detection Processing",
+      "passed": true,
+      "details": "Brute force events processed successfully (suppression disabled)",
+      "data": {
+        "processing_confirmed": true
+      },
+      "timestamp": "2025-09-04T16:15:26.817219"
+    },
+    {
+      "name": "API Notifications Endpoint",
+      "passed": true,
+      "details": "Retrieved 22 notifications",
+      "data": {
+        "count": 22
+      },
+      "timestamp": "2025-09-04T16:15:26.903730"
+    },
+    {
+      "name": "API Reports Endpoint",
+      "passed": true,
+      "details": "Retrieved 3 reports",
+      "data": {
+        "count": 3
+      },
+      "timestamp": "2025-09-04T16:15:26.931881"
+    },
+    {
+      "name": "API Dashboard Stats Endpoint",
+      "passed": true,
+      "details": "Successfully retrieved dashboard stats",
+      "data": {
+        "stats_keys": [
+          "totalSources",
+          "activeSources",
+          "alerts",
+          "totalEvents",
+          "uptime"
+        ]
+      },
+      "timestamp": "2025-09-04T16:15:26.943935"
+    },
+    {
+      "name": "Enhanced Reports Page Data",
+      "passed": true,
+      "details": "Found 1 enhanced security reports",
+      "data": {
+        "total_reports": 3,
+        "enhanced_reports": 1
+      },
+      "timestamp": "2025-09-04T16:15:26.955457"
+    }
+  ],
+  "system_status": "EXCELLENT",
+  "recommendations": [
+    "\u2705 System is fully operational and performing excellently",
+    "\u2705 All core components are functioning properly",
+    "\u2705 Brute force detection is active and working",
+    "\u2705 Dashboard integration is successful",
+    "\ud83d\udccb Continue monitoring for optimal performance"
+  ]
+}

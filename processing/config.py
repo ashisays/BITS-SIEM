@@ -30,6 +30,10 @@ class ThreatDetectionConfig:
     port_scan_window: int
     anomaly_detection_enabled: bool
     correlation_enabled: bool
+    false_positive_reduction_enabled: bool
+    dynamic_whitelist_enabled: bool
+    behavioral_analysis_enabled: bool
+    business_hours_enabled: bool
 
 @dataclass
 class DatabaseConfig:
@@ -115,7 +119,11 @@ class ProcessingConfig:
             port_scan_threshold=int(os.getenv("PORT_SCAN_THRESHOLD", "10")),
             port_scan_window=int(os.getenv("PORT_SCAN_WINDOW", "600")),  # 10 minutes
             anomaly_detection_enabled=os.getenv("ANOMALY_DETECTION_ENABLED", "true").lower() == "true",
-            correlation_enabled=os.getenv("CORRELATION_ENABLED", "true").lower() == "true"
+            correlation_enabled=os.getenv("CORRELATION_ENABLED", "true").lower() == "true",
+            false_positive_reduction_enabled=os.getenv("FALSE_POSITIVE_REDUCTION_ENABLED", "true").lower() == "true",
+            dynamic_whitelist_enabled=os.getenv("DYNAMIC_WHITELIST_ENABLED", "true").lower() == "true",
+            behavioral_analysis_enabled=os.getenv("BEHAVIORAL_ANALYSIS_ENABLED", "true").lower() == "true",
+            business_hours_enabled=os.getenv("BUSINESS_HOURS_ENABLED", "true").lower() == "true"
         )
         
         # Database configuration
@@ -131,7 +139,7 @@ class ProcessingConfig:
         self.redis = RedisConfig(
             host=os.getenv("REDIS_HOST", "redis"),
             port=int(os.getenv("REDIS_PORT", "6379")),
-            db=int(os.getenv("REDIS_DB", "1")),  # Use different DB than ingestion
+            db=int(os.getenv("REDIS_DB", "0")),  # Use same DB as ingestion for threat detection
             password=os.getenv("REDIS_PASSWORD"),
             max_connections=int(os.getenv("REDIS_MAX_CONNECTIONS", "20"))
         )

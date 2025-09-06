@@ -36,6 +36,7 @@ const clearAuth = () => {
   currentTenantId.value = null
   csrfToken.value = null
   localStorage.removeItem('jwt')
+  localStorage.removeItem('token')
   localStorage.removeItem('user')
   localStorage.removeItem('currentTenantId')
   localStorage.removeItem('csrf_token')
@@ -44,6 +45,7 @@ const clearAuth = () => {
 // Set auth state
 const setAuth = (token, userData, tenantId = null, csrf = null) => {
   localStorage.setItem('jwt', token)
+  localStorage.setItem('token', token) // Also store as 'token' for compatibility
   localStorage.setItem('user', JSON.stringify(userData))
   
   if (tenantId) {

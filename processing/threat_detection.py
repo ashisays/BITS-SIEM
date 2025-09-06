@@ -6,58 +6,54 @@ Real-time threat detection with brute force and port scanning detection
 import asyncio
 import logging
 import json
-import redis
 from typing import Dict, List, Any, Optional, Set
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 from collections import defaultdict
-import structlog
 
-from config import config
-from stream_processor import ProcessedEvent
+# Import optional dependencies conditionally
+try:
+    import structlog
+    STRUCTLOG_AVAILABLE = True
+    logger = structlog.get_logger(__name__)
+except ImportError:
+    STRUCTLOG_AVAILABLE = False
+    import logging
+    logger = logging.getLogger(__name__)
 
-logger = structlog.get_logger(__name__)
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    # Use mock Redis for testing
+    try:
+        from mock_redis import MockRedisModule
+        redis = MockRedisModule()
+        REDIS_AVAILABLE = True
+        logger.warning("Using mock Redis for testing")
+    except ImportError:
+        redis = None
 
-@dataclass
-class ThreatAlert:
-    """Threat alert structure"""
-    id: str
-    tenant_id: str
-    alert_type: str
-    severity: str
-    title: str
-    description: str
-    source_ip: str
-    target_ip: Optional[str] = None
-    timestamp: datetime = None
-    risk_score: float = 0.0
-    confidence: float = 0.0
-    evidence: Dict[str, Any] = None
-    metadata: Dict[str, Any] = None
-    correlation_id: Optional[str] = None
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
-        if self.evidence is None:
-            self.evidence = {}
-        if self.metadata is None:
-            self.metadata = {}
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization"""
-        data = asdict(self)
-        if isinstance(data.get('timestamp'), datetime):
-            data['timestamp'] = self.timestamp.isoformat()
-        return data
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ThreatAlert':
-        """Create from dictionary"""
-        if isinstance(data.get('timestamp'), str):
-            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
-        return cls(**data)
+from threat_models import ThreatAlert
+
+# Import config and stream processor conditionally
+try:
+    from config import config
+    CONFIG_AVAILABLE = True
+except ImportError:
+    CONFIG_AVAILABLE = False
+    config = None
+
+try:
+    from stream_processor import ProcessedEvent
+    STREAM_PROCESSOR_AVAILABLE = True
+except ImportError:
+    STREAM_PROCESSOR_AVAILABLE = False
+    ProcessedEvent = None
+
+# Logger is already initialized above
 
 class ThreatDetectionEngine(ABC):
     """Abstract base class for threat detection engines"""
@@ -105,6 +101,11 @@ class BruteForceDetectionEngine(ThreatDetectionEngine):
     
     def _init_redis(self):
         """Initialize Redis connection for state storage"""
+        if not REDIS_AVAILABLE:
+            logger.warning("Redis not available, brute force detection disabled")
+            self.enabled = False
+            return
+            
         try:
             self.redis_client = redis.Redis(
                 host=config.redis.host,
@@ -171,22 +172,27 @@ class BruteForceDetectionEngine(ThreatDetectionEngine):
                 # Calculate confidence based on pattern
                 confidence = min(new_count / (self.threshold * 2), 1.0)
                 
+                # Determine severity based on confidence
+                severity = "critical" if confidence >= 0.7 else "warning" if confidence >= 0.5 else "warning"
+                
                 # Create threat alert
                 alert = ThreatAlert(
                     id=f"brute_force_{event.tenant_id}_{event.source_ip}_{int(datetime.utcnow().timestamp())}",
                     tenant_id=event.tenant_id,
                     alert_type="brute_force_attack",
-                    severity="critical",
-                    title="Brute Force Attack Detected",
-                    description=f"Detected {new_count} failed login attempts from {event.source_ip} within {self.window_seconds} seconds",
+                    severity=severity,
+                    title="Brute Force Attack Detected" if confidence >= 0.5 else "Potential Brute Force Activity",
+                    description=f"Detected {new_count} failed login attempts from {event.source_ip} within {self.window_seconds} seconds" + 
+                               (f" (Low confidence: {confidence:.1%})" if confidence < 0.5 else ""),
                     source_ip=event.source_ip,
-                    risk_score=0.9,
+                    risk_score=0.9 if confidence >= 0.7 else 0.6,
                     confidence=confidence,
                     evidence={
                         'failed_attempts': new_count,
                         'threshold': self.threshold,
                         'window_seconds': self.window_seconds,
-                        'recent_attempts': attempts[-5:] if attempts else []  # Last 5 attempts
+                        'recent_attempts': attempts[-5:] if attempts else [],  # Last 5 attempts
+                        'username': event.raw_data.get('username', 'unknown')
                     },
                     metadata={
                         'detection_engine': self.name,
@@ -195,8 +201,32 @@ class BruteForceDetectionEngine(ThreatDetectionEngine):
                     }
                 )
                 
+                # Perform enhanced analysis (import here to avoid circular imports)
+                try:
+                    from enhanced_detection import enhanced_detection_engine
+                    enhanced_analysis = await enhanced_detection_engine.enhance_threat_analysis(event, alert)
+                    
+                    # Adjust risk score based on enhanced analysis
+                    if enhanced_analysis.get('enhanced'):
+                        risk_adjustment = enhanced_analysis.get('risk_adjustment', 0.0)
+                        alert.risk_score = max(0.0, min(1.0, alert.risk_score + risk_adjustment))
+                        alert.metadata.update({'enhanced_analysis': enhanced_analysis})
+                except ImportError:
+                    logger.warning("Enhanced detection not available")
+                
+                # Check for false positive indicators (import here to avoid circular imports)
+                try:
+                    from false_positive_reduction import fp_reduction_engine
+                    should_suppress, reason = await fp_reduction_engine.should_suppress_alert(event, alert)
+                    if should_suppress:
+                        logger.info(f"Brute force alert suppressed: {reason}")
+                        self.stats['false_positives'] += 1
+                        return None
+                except ImportError:
+                    logger.warning("False positive reduction not available")
+                
                 self.stats['threats_detected'] += 1
-                logger.warning(f"Brute force attack detected: {event.source_ip} -> {event.tenant_id}")
+                logger.warning(f"Brute force attack detected: {event.source_ip} -> {event.tenant_id} (risk: {alert.risk_score:.2f})")
                 
                 return alert
             
@@ -247,6 +277,11 @@ class PortScanDetectionEngine(ThreatDetectionEngine):
     
     def _init_redis(self):
         """Initialize Redis connection for state storage"""
+        if not REDIS_AVAILABLE:
+            logger.warning("Redis not available, port scan detection disabled")
+            self.enabled = False
+            return
+            
         try:
             self.redis_client = redis.Redis(
                 host=config.redis.host,
@@ -269,9 +304,11 @@ class PortScanDetectionEngine(ThreatDetectionEngine):
         try:
             self.stats['events_processed'] += 1
             
-            # Only analyze network connection events
-            if event.event_type not in ['network_connection', 'security_event']:
-                return None
+            # Analyze network connection events and firewall blocks
+            if event.event_type not in ['network_connection', 'security_event', 'firewall_block', 'authentication_failure']:
+                # Also check message content for firewall blocks
+                if not any(keyword in event.message.lower() for keyword in ['ufw block', 'firewall', 'dpt=', 'blocked', 'denied']):
+                    return None
             
             # Extract port information from message
             port = self._extract_port_from_event(event)
@@ -322,25 +359,28 @@ class PortScanDetectionEngine(ThreatDetectionEngine):
                 # Calculate confidence based on pattern
                 confidence = min(total_ports / (self.threshold * 2), 1.0)
                 
-                # Determine severity based on ports accessed
-                severity = self._calculate_port_scan_severity(all_ports)
+                # Determine severity based on ports accessed and confidence
+                base_severity = self._calculate_port_scan_severity(all_ports)
+                severity = base_severity if confidence >= 0.5 else "warning"
                 
                 # Create threat alert
                 alert = ThreatAlert(
                     id=f"port_scan_{event.tenant_id}_{event.source_ip}_{int(datetime.utcnow().timestamp())}",
                     tenant_id=event.tenant_id,
-                    alert_type="port_scan_attack",
+                    alert_type="port_scan",
                     severity=severity,
-                    title="Port Scanning Activity Detected",
-                    description=f"Detected connections to {total_ports} different ports from {event.source_ip} within {self.window_seconds} seconds",
+                    title="Port Scanning Activity Detected" if confidence >= 0.5 else "Potential Port Scanning Activity",
+                    description=f"Detected connections to {total_ports} different ports from {event.source_ip} within {self.window_seconds} seconds" +
+                               (f" (Low confidence: {confidence:.1%})" if confidence < 0.5 else ""),
                     source_ip=event.source_ip,
-                    risk_score=0.7,
+                    risk_score=0.7 if confidence >= 0.5 else 0.4,
                     confidence=confidence,
                     evidence={
                         'unique_ports': total_ports,
                         'threshold': self.threshold,
                         'window_seconds': self.window_seconds,
-                        'ports_accessed': sorted(list(all_ports), key=int)
+                        'ports_accessed': sorted(list(all_ports), key=int),
+                        'scan_type': self._classify_scan_type(all_ports)
                     },
                     metadata={
                         'detection_engine': self.name,
@@ -350,8 +390,32 @@ class PortScanDetectionEngine(ThreatDetectionEngine):
                     }
                 )
                 
+                # Perform enhanced analysis (import here to avoid circular imports)
+                try:
+                    from enhanced_detection import enhanced_detection_engine
+                    enhanced_analysis = await enhanced_detection_engine.enhance_threat_analysis(event, alert)
+                    
+                    # Adjust risk score based on enhanced analysis
+                    if enhanced_analysis.get('enhanced'):
+                        risk_adjustment = enhanced_analysis.get('risk_adjustment', 0.0)
+                        alert.risk_score = max(0.0, min(1.0, alert.risk_score + risk_adjustment))
+                        alert.metadata.update({'enhanced_analysis': enhanced_analysis})
+                except ImportError:
+                    logger.warning("Enhanced detection not available")
+                
+                # Check for false positive indicators (import here to avoid circular imports)
+                try:
+                    from false_positive_reduction import fp_reduction_engine
+                    should_suppress, reason = await fp_reduction_engine.should_suppress_alert(event, alert)
+                    if should_suppress:
+                        logger.info(f"Port scan alert suppressed: {reason}")
+                        self.stats['false_positives'] += 1
+                        return None
+                except ImportError:
+                    logger.warning("False positive reduction not available")
+                
                 self.stats['threats_detected'] += 1
-                logger.warning(f"Port scan detected: {event.source_ip} -> {total_ports} ports")
+                logger.warning(f"Port scan detected: {event.source_ip} -> {total_ports} ports (risk: {alert.risk_score:.2f})")
                 
                 return alert
             
@@ -370,8 +434,9 @@ class PortScanDetectionEngine(ThreatDetectionEngine):
             # Look for port patterns in the message
             import re
             
-            # Pattern: "port 80", "port:80", "port=80"
+            # Pattern: "port 80", "port:80", "port=80", "DPT=80"
             port_patterns = [
+                r'dpt[:=](\d+)',  # Firewall DPT=port pattern
                 r'port\s*[:=]?\s*(\d+)',
                 r'dst\s*port\s*[:=]?\s*(\d+)',
                 r'destination\s*port\s*[:=]?\s*(\d+)',
@@ -662,6 +727,207 @@ class AnomalyDetectionEngine(ThreatDetectionEngine):
         except Exception as e:
             logger.error(f"Error in anomaly detection cleanup: {e}")
 
+class NegativeScenarioDetectionEngine(ThreatDetectionEngine):
+    """Detects suspicious patterns that warrant warning alerts"""
+    
+    def __init__(self):
+        super().__init__("negative_scenario")
+        self.redis_client = None
+        self.enabled = True
+        self.suspicious_patterns = [
+            'multiple failed attempts',
+            'unusual login time',
+            'new device login',
+            'suspicious user agent',
+            'rapid requests',
+            'privilege escalation attempt'
+        ]
+        
+        # Initialize Redis connection
+        self._init_redis()
+    
+    def _init_redis(self):
+        """Initialize Redis connection for state storage"""
+        try:
+            self.redis_client = redis.Redis(
+                host=config.redis.host,
+                port=config.redis.port,
+                db=config.redis.db,
+                password=config.redis.password,
+                decode_responses=True
+            )
+            # Test connection
+            self.redis_client.ping()
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis for negative scenario detection: {e}")
+            self.enabled = False
+    
+    async def analyze_event(self, event: ProcessedEvent) -> Optional[ThreatAlert]:
+        """Analyze event for suspicious patterns"""
+        if not self.enabled:
+            return None
+        
+        try:
+            self.stats['events_processed'] += 1
+            
+            # Check for rapid legitimate logins (could indicate credential stuffing)
+            if event.event_type == 'authentication_failure':
+                # Check if there are too many failures from different IPs for same user
+                if await self._check_distributed_failures(event):
+                    username = event.raw_data.get("username", "unknown")
+                    return await self._create_warning_alert(
+                        event, 
+                        "Distributed Authentication Failures",
+                        "Multiple failed login attempts from different IPs detected",
+                        {"pattern": "distributed_failures", "username": username}
+                    )
+            
+            # Check for successful logins after failures (potential credential stuffing success)
+            if event.event_type == 'authentication_success':
+                if await self._check_suspicious_success(event):
+                    username = event.raw_data.get("username", "unknown")
+                    return await self._create_warning_alert(
+                        event,
+                        "Suspicious Successful Login",
+                        "Successful login after multiple failures detected",
+                        {"pattern": "suspicious_success", "username": username}
+                    )
+            
+            # Check for unusual patterns in message content
+            message_lower = event.message.lower()
+            for pattern in self.suspicious_patterns:
+                if pattern in message_lower:
+                    return await self._create_warning_alert(
+                        event,
+                        "Suspicious Activity Pattern",
+                        f"Detected suspicious pattern: {pattern}",
+                        {"pattern": pattern, "message_snippet": event.message[:100]}
+                    )
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error in negative scenario detection: {e}")
+            return None
+    
+    async def _check_distributed_failures(self, event: ProcessedEvent) -> bool:
+        """Check for failures from multiple IPs for same user"""
+        username = event.raw_data.get("username")
+        if not self.redis_client or not username:
+            # Try to extract username from message if not in raw_data
+            message_lower = event.message.lower()
+            if 'for ' in message_lower:
+                parts = message_lower.split('for ')
+                if len(parts) > 1:
+                    username_part = parts[1].split(' ')[0]
+                    if username_part and len(username_part) > 0:
+                        username = username_part
+                    else:
+                        return False
+                else:
+                    return False
+            else:
+                return False
+        
+        # Extract source IP from message content for SSH failures
+        source_ip = event.source_ip
+        if 'ssh' in event.message.lower() and 'from ' in event.message.lower():
+            # Extract IP from "from IP_ADDRESS port" pattern
+            import re
+            ip_match = re.search(r'from\s+(\d+\.\d+\.\d+\.\d+)', event.message)
+            if ip_match:
+                source_ip = ip_match.group(1)
+        
+        try:
+            key = f"neg_scenario:user_failures:{event.tenant_id}:{username}"
+            
+            # Add current IP to set
+            await asyncio.get_event_loop().run_in_executor(
+                None, self.redis_client.sadd, key, source_ip
+            )
+            
+            # Set expiration (5 minutes)
+            await asyncio.get_event_loop().run_in_executor(
+                None, self.redis_client.expire, key, 300
+            )
+            
+            # Get count of unique IPs
+            ip_count = await asyncio.get_event_loop().run_in_executor(
+                None, self.redis_client.scard, key
+            )
+            
+            # Alert if failures from 3+ different IPs
+            return ip_count >= 3
+            
+        except Exception as e:
+            logger.error(f"Error checking distributed failures: {e}")
+            return False
+    
+    async def _check_suspicious_success(self, event: ProcessedEvent) -> bool:
+        """Check if success follows recent failures"""
+        username = event.raw_data.get("username")
+        if not self.redis_client or not username:
+            return False
+        
+        try:
+            failure_key = f"neg_scenario:user_failures:{event.tenant_id}:{username}"
+            
+            # Check if there were recent failures for this user
+            ip_count = await asyncio.get_event_loop().run_in_executor(
+                None, self.redis_client.scard, failure_key
+            )
+            
+            # Alert if success after failures from multiple IPs
+            return ip_count >= 2
+            
+        except Exception as e:
+            logger.error(f"Error checking suspicious success: {e}")
+            return False
+    
+    async def _create_warning_alert(self, event: ProcessedEvent, title: str, description: str, evidence: dict) -> ThreatAlert:
+        """Create a warning-level threat alert"""
+        import uuid
+        
+        alert_id = str(uuid.uuid4())
+        
+        return ThreatAlert(
+            id=alert_id,
+            tenant_id=event.tenant_id,
+            alert_type="suspicious_activity",
+            severity="warning",
+            title=title,
+            description=description,
+            source_ip=event.source_ip,
+            target_ip=event.target_ip,
+            timestamp=event.timestamp,
+            risk_score=0.6,  # Medium risk
+            confidence=0.8,  # High confidence
+            evidence=evidence,
+            metadata={
+                "detection_engine": "negative_scenario",
+                "event_type": event.event_type,
+                "username": event.raw_data.get("username", "unknown"),
+                "original_message": event.message
+            }
+        )
+    
+    async def cleanup(self):
+        """Cleanup method for negative scenario detection"""
+        try:
+            if self.redis_client:
+                # Clean up old negative scenario tracking data
+                pattern = f"neg_scenario:*"
+                keys = await asyncio.get_event_loop().run_in_executor(
+                    None, self.redis_client.keys, pattern
+                )
+                if keys:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, self.redis_client.delete, *keys
+                    )
+                logger.info("Negative scenario detection cleanup completed")
+        except Exception as e:
+            logger.error(f"Error in negative scenario cleanup: {e}")
+
 class ThreatDetectionManager:
     """Manages all threat detection engines"""
     
@@ -690,6 +956,9 @@ class ThreatDetectionManager:
             
             if config.threat_detection.anomaly_detection_enabled:
                 self.engines.append(AnomalyDetectionEngine())
+            
+            # Always enable negative scenario detection for warning alerts
+            self.engines.append(NegativeScenarioDetectionEngine())
             
             self.stats['engine_count'] = len(self.engines)
             

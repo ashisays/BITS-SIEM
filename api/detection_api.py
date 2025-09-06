@@ -223,7 +223,10 @@ async def batch_ingest_authentication_events(
 async def get_security_alerts(
     tenant_id: str = Query(..., description="Tenant ID"),
     status: Optional[str] = Query(None, description="Filter by status: open, investigating, resolved, false_positive"),
-    severity: Optional[str] = Query(None, description="Filter by severity: low, medium, high, critical"),
+    severity: Optional[str] = Query(None, description="Filter by severity: low, medium, high, critical, warning"),
+    time_filter: Optional[str] = Query(None, description="Filter by time: today, yesterday, last7days"),
+    sort_by: Optional[str] = Query("created_at", description="Sort by: created_at, severity, source_ip, status, confidence_score"),
+    sort_order: Optional[str] = Query("desc", description="Sort order: asc, desc"),
     limit: int = Query(50, description="Maximum number of alerts to return"),
     offset: int = Query(0, description="Number of alerts to skip"),
     db: Session = Depends(get_db)
@@ -237,12 +240,60 @@ async def get_security_alerts(
     try:
         query = db.query(SecurityAlert).filter(SecurityAlert.tenant_id == tenant_id)
         
+        # Apply filters
         if status:
             query = query.filter(SecurityAlert.status == status)
         if severity:
             query = query.filter(SecurityAlert.severity == severity)
         
-        alerts = query.order_by(SecurityAlert.created_at.desc()).offset(offset).limit(limit).all()
+        # Apply time filter
+        if time_filter:
+            now = datetime.utcnow()
+            if time_filter == "today":
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                query = query.filter(SecurityAlert.created_at >= start_date)
+            elif time_filter == "yesterday":
+                yesterday = now - timedelta(days=1)
+                start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                query = query.filter(SecurityAlert.created_at >= start_date, SecurityAlert.created_at < end_date)
+            elif time_filter == "last7days":
+                start_date = now - timedelta(days=7)
+                query = query.filter(SecurityAlert.created_at >= start_date)
+        
+        # Apply sorting
+        sort_column = SecurityAlert.created_at  # default
+        if sort_by == "severity":
+            # Custom severity ordering: critical > high > warning > medium > low > info
+            severity_order = {
+                'critical': 6, 'high': 5, 'warning': 4, 
+                'medium': 3, 'low': 2, 'info': 1
+            }
+            # For severity, we'll sort by created_at as secondary and handle severity in Python
+            sort_column = SecurityAlert.created_at
+        elif sort_by == "source_ip":
+            sort_column = SecurityAlert.source_ip
+        elif sort_by == "status":
+            sort_column = SecurityAlert.status
+        elif sort_by == "confidence_score":
+            sort_column = SecurityAlert.confidence_score
+        
+        if sort_order == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+        
+        alerts = query.offset(offset).limit(limit).all()
+        
+        # Handle severity sorting in Python if needed
+        if sort_by == "severity":
+            severity_order = {
+                'critical': 6, 'high': 5, 'warning': 4, 
+                'medium': 3, 'low': 2, 'info': 1
+            }
+            alerts = sorted(alerts, 
+                          key=lambda x: severity_order.get(x.severity, 0), 
+                          reverse=(sort_order == "desc"))
         
         return [
             AlertResponse(
@@ -265,6 +316,60 @@ async def get_security_alerts(
     except Exception as e:
         logger.error(f"Error retrieving security alerts: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve alerts: {str(e)}")
+
+@detection_router.get("/alerts/stats")
+async def get_alert_stats(
+    tenant_id: str = Query(..., description="Tenant ID"),
+    time_filter: Optional[str] = Query(None, description="Filter by time: today, yesterday, last7days"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get alert statistics for a tenant with optional time filtering
+    """
+    if not DATABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        query = db.query(SecurityAlert).filter(SecurityAlert.tenant_id == tenant_id)
+        
+        # Apply time filter
+        if time_filter:
+            now = datetime.utcnow()
+            if time_filter == "today":
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                query = query.filter(SecurityAlert.created_at >= start_date)
+            elif time_filter == "yesterday":
+                yesterday = now - timedelta(days=1)
+                start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                query = query.filter(SecurityAlert.created_at >= start_date, SecurityAlert.created_at < end_date)
+            elif time_filter == "last7days":
+                start_date = now - timedelta(days=7)
+                query = query.filter(SecurityAlert.created_at >= start_date)
+        
+        alerts = query.all()
+        
+        # Calculate statistics
+        total_alerts = len(alerts)
+        critical_count = len([a for a in alerts if a.severity == 'critical'])
+        warning_count = len([a for a in alerts if a.severity in ['high', 'warning', 'medium']])
+        info_count = len([a for a in alerts if a.severity in ['low', 'info']])
+        
+        # Count low confidence alerts (< 50%)
+        low_confidence_count = len([a for a in alerts if (a.confidence_score or 0) < 0.5])
+        
+        return {
+            "total_alerts": total_alerts,
+            "critical_count": critical_count,
+            "warning_count": warning_count,
+            "info_count": info_count,
+            "low_confidence_count": low_confidence_count,
+            "time_filter": time_filter or "all_time"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving alert stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve alert stats: {str(e)}")
 
 @detection_router.put("/alerts/{alert_id}/status")
 async def update_alert_status(

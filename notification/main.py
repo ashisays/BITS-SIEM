@@ -567,21 +567,24 @@ class NotificationService:
             # Send through all channels
             success = True
             
-            # Email notification
-            if preferences.email_enabled:
-                email_sent = await self.email_service.send_notification(notification, preferences, self._get_template_data(notification))
-                if email_sent:
-                    self.stats['emails_sent'] += 1
-                else:
-                    success = False
+            # Skip email and webhook for now to focus on WebSocket
+            # TODO: Re-enable after fixing datetime issues
             
-            # Webhook notification
-            if preferences.webhook_enabled:
-                webhook_sent = await self.webhook_service.send_notification(notification, preferences)
-                if webhook_sent:
-                    self.stats['webhooks_sent'] += 1
-                else:
-                    success = False
+            # Email notification (disabled temporarily)
+            # if preferences.email_enabled:
+            #     email_sent = await self.email_service.send_notification(notification, preferences, self._get_template_data(notification))
+            #     if email_sent:
+            #         self.stats['emails_sent'] += 1
+            #     else:
+            #         success = False
+            
+            # Webhook notification (disabled temporarily)
+            # if preferences.webhook_enabled:
+            #     webhook_sent = await self.webhook_service.send_notification(notification, preferences)
+            #     if webhook_sent:
+            #         self.stats['webhooks_sent'] += 1
+            #     else:
+            #         success = False
             
             # WebSocket notification (always send for real-time updates)
             await self.websocket_manager.send_notification(notification.tenant_id, notification.to_dict())

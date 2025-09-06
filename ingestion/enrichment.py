@@ -277,10 +277,25 @@ class MessageEnricher:
         try:
             self.stats['messages_enriched'] += 1
             
-            # Resolve tenant ID
-            if config.enrichment.tenant_resolution_enabled and message.source_ip:
-                message.tenant_id = self.tenant_resolver.resolve_tenant(message.source_ip)
-                self.stats['tenant_resolutions'] += 1
+            # Resolve tenant ID - check structured data first, then fall back to IP-based resolution
+            if config.enrichment.tenant_resolution_enabled:
+                # Check if tenant_id is already specified in structured data
+                if message.structured_data and 'meta' in message.structured_data:
+                    meta_data = message.structured_data['meta']
+                    if 'tenant_id' in meta_data:
+                        message.tenant_id = meta_data['tenant_id']
+                        self.stats['tenant_resolutions'] += 1
+                        logger.debug(f"Using tenant_id from structured data: {message.tenant_id}")
+                    else:
+                        # Fall back to IP-based resolution
+                        if message.source_ip:
+                            message.tenant_id = self.tenant_resolver.resolve_tenant(message.source_ip)
+                            self.stats['tenant_resolutions'] += 1
+                else:
+                    # No structured data, use IP-based resolution
+                    if message.source_ip:
+                        message.tenant_id = self.tenant_resolver.resolve_tenant(message.source_ip)
+                        self.stats['tenant_resolutions'] += 1
             
             # Add geo-location
             if config.enrichment.geoip_enabled and message.source_ip:

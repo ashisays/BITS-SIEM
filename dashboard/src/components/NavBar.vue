@@ -32,14 +32,7 @@
             Sources
           </router-link>
           
-          <router-link 
-            :to="`/tenant/${currentTenantId}/notifications`" 
-            class="nav-link"
-            active-class="active"
-          >
-            <i class="icon">🔔</i>
-            Notifications
-          </router-link>
+
           
           <router-link 
             :to="`/tenant/${currentTenantId}/reports`" 

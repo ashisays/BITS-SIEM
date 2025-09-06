@@ -6,16 +6,36 @@ Real-time processing of syslog messages from ingestion service
 import asyncio
 import logging
 import json
-import redis
 from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
-import structlog
 from abc import ABC, abstractmethod
+
+# Import optional dependencies conditionally
+try:
+    import structlog
+    logger = structlog.get_logger(__name__)
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    # Use mock Redis for testing
+    try:
+        from mock_redis import MockRedisModule
+        redis = MockRedisModule()
+        REDIS_AVAILABLE = True
+        logger.warning("Using mock Redis for testing")
+    except ImportError:
+        redis = None
 
 from config import config
 
-logger = structlog.get_logger(__name__)
+# Logger is already initialized above
 
 @dataclass
 class ProcessedEvent:
@@ -169,8 +189,9 @@ class RedisStreamBackend(StreamBackend):
         for stream_name, stream_messages in messages:
             for message_id, fields in stream_messages:
                 try:
-                    # Deserialize message
-                    message_data = json.loads(fields.get('data', '{}'))
+                    # The message data is stored directly as key-value pairs in Redis stream
+                    # No need to deserialize from JSON
+                    message_data = fields
                     
                     # Process message
                     await handler(message_data)
@@ -365,8 +386,27 @@ class MessageProcessor:
             return None
     
     async def _classify_event_type(self, message: Dict[str, Any]) -> str:
-        """Classify the event type based on message content"""
+        """Classify the event type based on message content and structured data"""
         try:
+            # First, check if event_type is already provided in the stream data
+            if 'event_type' in message and message['event_type'] != 'syslog':
+                return message['event_type']
+            
+            # Check structured data for event_type
+            if 'structured_data' in message and message['structured_data']:
+                try:
+                    # Parse structured_data if it's a JSON string
+                    if isinstance(message['structured_data'], str):
+                        structured_data = json.loads(message['structured_data'])
+                    else:
+                        structured_data = message['structured_data']
+                    
+                    if 'meta' in structured_data and 'event_type' in structured_data['meta']:
+                        return structured_data['meta']['event_type']
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.debug(f"Failed to parse structured_data: {e}")
+            
+            # Fall back to content-based classification
             msg_content = message.get('message', '').lower()
             program = message.get('program', '').lower()
             
@@ -385,8 +425,8 @@ class MessageProcessor:
             elif any(keyword in msg_content for keyword in ['started', 'stopped', 'service', 'daemon']):
                 return 'system_event'
             
-            # Security events
-            elif any(keyword in msg_content for keyword in ['blocked', 'denied', 'rejected', 'firewall']):
+            # Security events and firewall blocks
+            elif any(keyword in msg_content for keyword in ['blocked', 'denied', 'rejected', 'firewall', 'ufw block', 'dpt=']):
                 return 'security_event'
             
             # SSH events

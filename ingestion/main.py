@@ -5,6 +5,7 @@ Main application for multi-protocol syslog ingestion with tenant isolation
 """
 
 import asyncio
+import json
 import logging
 import signal
 import sys
@@ -157,6 +158,13 @@ class MessageProcessor:
             
             # Publish each message to the syslog_events stream
             for message in messages:
+                # Extract event_type from structured data if available
+                event_type = 'syslog'  # default
+                if message.structured_data and 'meta' in message.structured_data:
+                    meta_data = message.structured_data['meta']
+                    if 'event_type' in meta_data:
+                        event_type = meta_data['event_type']
+                
                 # Convert message to dict for stream publishing
                 stream_data = {
                     'timestamp': message.timestamp.isoformat() if message.timestamp else datetime.utcnow().isoformat(),
@@ -167,8 +175,9 @@ class MessageProcessor:
                     'severity': str(message.severity) if message.severity is not None else '6',
                     'tenant_id': message.tenant_id or 'demo-org',
                     'source_ip': message.source_ip or 'unknown',
-                    'event_type': 'syslog',
-                    'raw_message': message.raw_message or ''
+                    'event_type': event_type,
+                    'raw_message': message.raw_message or '',
+                    'structured_data': json.dumps(message.structured_data) if message.structured_data else '{}'
                 }
                 
                 # Add to Redis stream (matching processing service expectation)

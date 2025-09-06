@@ -36,12 +36,14 @@ except Exception as e:
 # Try to import detection system
 try:
     from detection_api import detection_router
+    from false_positive_api import fp_router
     DETECTION_AVAILABLE = True
     print("Detection system loaded successfully")
 except Exception as e:
     print(f"Detection system import failed: {e}")
     DETECTION_AVAILABLE = False
     detection_router = None
+    fp_router = None
 
 SECRET_KEY = config.security.jwt_secret
 ALGORITHM = config.security.jwt_algorithm
@@ -51,6 +53,10 @@ app = FastAPI(title="BITS-SIEM API", version="1.0.0")
 # Include detection router if available
 if DETECTION_AVAILABLE and detection_router:
     app.include_router(detection_router)
+
+# Include false positive router if available
+if DETECTION_AVAILABLE and fp_router:
+    app.include_router(fp_router)
     print("Detection API endpoints registered")
 
 # CSRF Protection
@@ -701,23 +707,63 @@ def get_notifications(current=Depends(get_current_user), db = Depends(get_db)):
     user_tenant = current["tenantId"]
     
     if DATABASE_AVAILABLE and db:
-        # Database notifications
+        # Get regular notifications
         notifications = db.query(NotificationModel).filter(
             NotificationModel.tenant_id == user_tenant
         ).order_by(NotificationModel.created_at.desc()).all()
         
-        return [{
-            "id": notif.id,
+        notification_list = [{
+            "id": f"notif_{notif.id}",
             "message": notif.message,
             "timestamp": notif.created_at.isoformat() if notif.created_at else None,
             "tenant": notif.tenant_id,
             "severity": notif.severity,
             "isRead": notif.is_read,
-            "metadata": notif.meta_data
+            "metadata": notif.meta_data,
+            "type": "system_notification"
         } for notif in notifications]
+        
+        # Get security alerts from detection system
+        try:
+            from database import SecurityAlert
+            security_alerts = db.query(SecurityAlert).filter(
+                SecurityAlert.tenant_id == user_tenant
+            ).order_by(SecurityAlert.created_at.desc()).limit(20).all()
+            
+            # Add security alerts as notifications
+            for alert in security_alerts:
+                notification_list.append({
+                    "id": f"alert_{alert.id}",
+                    "message": f"🚨 Security Alert: {alert.title} - {alert.description}",
+                    "timestamp": alert.created_at.isoformat() if alert.created_at else None,
+                    "tenant": alert.tenant_id,
+                    "severity": alert.severity,
+                    "isRead": alert.status in ['resolved', 'false_positive'],
+                    "metadata": {
+                        "alert_type": alert.alert_type,
+                        "source_ip": alert.source_ip,
+                        "username": alert.username,
+                        "confidence_score": alert.confidence_score,
+                        "status": alert.status,
+                        "correlation_data": alert.correlation_data
+                    },
+                    "type": "security_alert"
+                })
+        except Exception as e:
+            print(f"Could not fetch security alerts: {e}")
+        
+        # Sort by timestamp (newest first)
+        notification_list.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        return notification_list
     else:
-        # Fallback notifications
-        return fallback_notifications.get(user_tenant, [])
+        # Enhanced fallback notifications with security alerts
+        fallback_notifications_enhanced = [
+            {"id": "alert_1", "message": "🚨 Security Alert: Brute Force Attack Detected - Multiple failed login attempts from 192.168.1.100", "timestamp": datetime.now().isoformat(), "tenant": user_tenant, "severity": "critical", "isRead": False, "metadata": {"alert_type": "brute_force", "source_ip": "192.168.1.100", "failed_attempts": 10, "status": "open"}, "type": "security_alert"},
+            {"id": "alert_2", "message": "🚨 Security Alert: Port Scan Detected - Scanning activity from 10.0.0.50", "timestamp": (datetime.now() - timedelta(minutes=30)).isoformat(), "tenant": user_tenant, "severity": "warning", "isRead": False, "metadata": {"alert_type": "port_scan", "source_ip": "10.0.0.50", "ports_scanned": 15, "status": "investigating"}, "type": "security_alert"},
+            {"id": "notif_1", "message": "High CPU usage detected on Web Server", "timestamp": (datetime.now() - timedelta(hours=1)).isoformat(), "tenant": user_tenant, "severity": "warning", "isRead": False, "metadata": {"cpu_usage": "85%"}, "type": "system_notification"},
+            {"id": "notif_2", "message": "System backup completed successfully", "timestamp": (datetime.now() - timedelta(hours=2)).isoformat(), "tenant": user_tenant, "severity": "info", "isRead": True, "metadata": {"backup_size": "2.3GB"}, "type": "system_notification"}
+        ]
+        return fallback_notifications_enhanced
 
 @app.get("/api/reports")
 def get_reports(current=Depends(get_current_user), db = Depends(get_db)):
@@ -729,7 +775,7 @@ def get_reports(current=Depends(get_current_user), db = Depends(get_db)):
             ReportModel.tenant_id == user_tenant
         ).order_by(ReportModel.created_at.desc()).all()
         
-        return [{
+        report_list = [{
             "id": report.id,
             "title": report.title,
             "summary": report.summary,
@@ -739,11 +785,137 @@ def get_reports(current=Depends(get_current_user), db = Depends(get_db)):
             "generatedBy": report.generated_by,
             "data": report.data
         } for report in reports]
+        
+        # Generate enhanced security report with detailed alerts
+        try:
+            from database import SecurityAlert, AuthenticationEvent
+            
+            # Get security alerts for the last 7 days
+            week_ago = datetime.utcnow() - timedelta(days=7)
+            recent_alerts = db.query(SecurityAlert).filter(
+                SecurityAlert.tenant_id == user_tenant,
+                SecurityAlert.created_at >= week_ago
+            ).order_by(SecurityAlert.created_at.desc()).all()
+            
+            # Get authentication events for the last 7 days
+            recent_events = db.query(AuthenticationEvent).filter(
+                AuthenticationEvent.tenant_id == user_tenant,
+                AuthenticationEvent.timestamp >= week_ago
+            ).count()
+            
+            # Create detailed security report
+            alert_details = []
+            for alert in recent_alerts[:10]:  # Show top 10 recent alerts
+                alert_details.append({
+                    "id": alert.id,
+                    "title": alert.title,
+                    "description": alert.description,
+                    "severity": alert.severity,
+                    "alert_type": alert.alert_type,
+                    "source_ip": alert.source_ip,
+                    "username": alert.username,
+                    "confidence_score": alert.confidence_score,
+                    "status": alert.status,
+                    "created_at": alert.created_at.isoformat() if alert.created_at else None,
+                    "correlation_data": alert.correlation_data
+                })
+            
+            # Severity breakdown
+            severity_breakdown = {}
+            for alert in recent_alerts:
+                severity = alert.severity
+                severity_breakdown[severity] = severity_breakdown.get(severity, 0) + 1
+            
+            # Status breakdown
+            status_breakdown = {}
+            for alert in recent_alerts:
+                status = alert.status
+                status_breakdown[status] = status_breakdown.get(status, 0) + 1
+            
+            enhanced_security_report = {
+                "id": "security_enhanced",
+                "title": "🛡️ Enhanced Security Report",
+                "summary": f"Detailed security analysis for the last 7 days - {len(recent_alerts)} alerts detected",
+                "tenant": user_tenant,
+                "date": datetime.now().date().isoformat(),
+                "type": "security_enhanced",
+                "generatedBy": "system",
+                "data": {
+                    "total_alerts": len(recent_alerts),
+                    "total_auth_events": recent_events,
+                    "severity_breakdown": severity_breakdown,
+                    "status_breakdown": status_breakdown,
+                    "recent_alerts": alert_details,
+                    "alert_types": list(set([alert.alert_type for alert in recent_alerts])) if recent_alerts else []
+                }
+            }
+            
+            # Insert enhanced report at the beginning
+            report_list.insert(0, enhanced_security_report)
+            
+        except Exception as e:
+            print(f"Could not generate enhanced security report: {e}")
+        
+        return report_list
     else:
-        # Fallback reports
+        # Enhanced fallback reports with detailed security information
         return [
-            {"id": 1, "title": "Security Summary Report", "summary": "Weekly security overview", "tenant": user_tenant, "date": datetime.now().date().isoformat(), "type": "security", "generatedBy": "system", "data": {"total_events": 1250}},
-            {"id": 2, "title": "Threat Analysis Report", "summary": "Analysis of recent security threats", "tenant": user_tenant, "date": datetime.now().date().isoformat(), "type": "threat", "generatedBy": "admin", "data": {"threats_detected": 8}}
+            {
+                "id": "security_enhanced",
+                "title": "🛡️ Enhanced Security Report",
+                "summary": "Detailed security analysis with recent alerts",
+                "tenant": user_tenant,
+                "date": datetime.now().date().isoformat(),
+                "type": "security_enhanced",
+                "generatedBy": "system",
+                "data": {
+                    "total_alerts": 15,
+                    "total_auth_events": 1250,
+                    "severity_breakdown": {"critical": 3, "warning": 7, "info": 5},
+                    "status_breakdown": {"open": 8, "investigating": 4, "resolved": 3},
+                    "recent_alerts": [
+                        {
+                            "id": 1,
+                            "title": "Brute Force Attack Detected",
+                            "description": "Multiple failed login attempts detected from suspicious IP",
+                            "severity": "critical",
+                            "alert_type": "brute_force",
+                            "source_ip": "192.168.1.100",
+                            "username": "admin",
+                            "confidence_score": 0.95,
+                            "status": "open",
+                            "created_at": datetime.now().isoformat()
+                        },
+                        {
+                            "id": 2,
+                            "title": "Port Scan Activity",
+                            "description": "Suspicious port scanning detected on network infrastructure",
+                            "severity": "warning",
+                            "alert_type": "port_scan",
+                            "source_ip": "10.0.0.50",
+                            "username": None,
+                            "confidence_score": 0.8,
+                            "status": "investigating",
+                            "created_at": (datetime.now() - timedelta(minutes=30)).isoformat()
+                        },
+                        {
+                            "id": 3,
+                            "title": "Anomalous Behavior Detected",
+                            "description": "Unusual login patterns detected for user account",
+                            "severity": "warning",
+                            "alert_type": "anomaly",
+                            "source_ip": "192.168.1.200",
+                            "username": "user@demo.com",
+                            "confidence_score": 0.7,
+                            "status": "resolved",
+                            "created_at": (datetime.now() - timedelta(hours=2)).isoformat()
+                        }
+                    ],
+                    "alert_types": ["brute_force", "port_scan", "anomaly"]
+                }
+            },
+            {"id": 1, "title": "Security Summary Report", "summary": "Weekly security overview", "tenant": user_tenant, "date": datetime.now().date().isoformat(), "type": "security", "generatedBy": "system", "data": {"total_events": 1250, "threats_blocked": 15}},
+            {"id": 2, "title": "Threat Analysis Report", "summary": "Analysis of recent security threats", "tenant": user_tenant, "date": datetime.now().date().isoformat(), "type": "threat", "generatedBy": "admin", "data": {"threats_detected": 8, "false_positives": 2}}
         ]
 
 @app.patch("/api/notifications/{notification_id}/read")
@@ -773,6 +945,69 @@ def mark_notification_as_read(notification_id: int, current=Depends(get_current_
         
         raise HTTPException(status_code=404, detail="Notification not found")
 
+@app.get("/api/notifications/stats")
+def get_notification_stats(current=Depends(get_current_user), db = Depends(get_db)):
+    """Get notification statistics for the organization"""
+    user_tenant = current["tenantId"]
+    
+    if DATABASE_AVAILABLE and db:
+        # Get notification counts by status
+        notifications = db.query(NotificationModel).filter(
+            NotificationModel.tenant_id == user_tenant
+        ).all()
+        
+        # Get security alert counts by status
+        try:
+            from database import SecurityAlert
+            security_alerts = db.query(SecurityAlert).filter(
+                SecurityAlert.tenant_id == user_tenant
+            ).all()
+        except Exception as e:
+            print(f"Could not fetch security alerts: {e}")
+            security_alerts = []
+        
+        # Calculate statistics
+        stats = {
+            "total_notifications": len(notifications),
+            "total_security_alerts": len(security_alerts),
+            "unread_count": len([n for n in notifications if not n.is_read]),
+            "unread_alerts": len([a for a in security_alerts if a.status == "open"]),
+            "status_breakdown": {
+                "open": len([a for a in security_alerts if a.status == "open"]),
+                "investigating": len([a for a in security_alerts if a.status == "investigating"]),
+                "resolved": len([a for a in security_alerts if a.status == "resolved"]),
+                "suppressed": len([a for a in security_alerts if a.status == "suppressed"]),
+                "safe": len([a for a in security_alerts if a.status == "safe"])
+            },
+            "severity_breakdown": {
+                "critical": len([a for a in security_alerts if a.severity == "critical"]),
+                "warning": len([a for a in security_alerts if a.severity == "warning"]),
+                "info": len([a for a in security_alerts if a.severity == "info"])
+            }
+        }
+        
+        return stats
+    else:
+        # Fallback statistics
+        return {
+            "total_notifications": 4,
+            "total_security_alerts": 2,
+            "unread_count": 3,
+            "unread_alerts": 2,
+            "status_breakdown": {
+                "open": 2,
+                "investigating": 0,
+                "resolved": 0,
+                "suppressed": 0,
+                "safe": 0
+            },
+            "severity_breakdown": {
+                "critical": 1,
+                "warning": 1,
+                "info": 0
+            }
+        }
+
 @app.patch("/api/notifications/read-all")
 def mark_all_notifications_as_read(current=Depends(get_current_user), db = Depends(get_db)):
     user_tenant = current["tenantId"]
@@ -799,6 +1034,142 @@ def mark_all_notifications_as_read(current=Depends(get_current_user), db = Depen
                 count += 1
         
         return {"message": f"Marked {count} notifications as read"}
+
+@app.patch("/api/notifications/{notification_id}/status")
+def update_notification_status(notification_id: str, status_update: dict, current=Depends(get_current_user), db = Depends(get_db)):
+    """Update notification status (safe, suppressed, resolved, investigating)"""
+    user_tenant = current["tenantId"]
+    new_status = status_update.get("status")
+    
+    if new_status not in ["safe", "suppressed", "resolved", "investigating", "open"]:
+        raise HTTPException(status_code=400, detail="Invalid status. Must be one of: safe, suppressed, resolved, investigating, open")
+    
+    if DATABASE_AVAILABLE and db:
+        # Handle security alerts
+        if notification_id.startswith("alert_"):
+            alert_id = int(notification_id.replace("alert_", ""))
+            try:
+                from database import SecurityAlert
+                alert = db.query(SecurityAlert).filter(
+                    SecurityAlert.id == alert_id,
+                    SecurityAlert.tenant_id == user_tenant
+                ).first()
+                
+                if alert:
+                    alert.status = new_status
+                    if new_status in ["resolved", "safe", "suppressed"]:
+                        alert.is_read = True
+                    db.commit()
+                    return {"message": f"Alert status updated to {new_status}"}
+                else:
+                    raise HTTPException(status_code=404, detail="Security alert not found")
+            except Exception as e:
+                print(f"Error updating security alert: {e}")
+                raise HTTPException(status_code=500, detail="Failed to update security alert")
+        
+        # Handle regular notifications
+        else:
+            notif_id = int(notification_id.replace("notif_", ""))
+            notification = db.query(NotificationModel).filter(
+                NotificationModel.id == notif_id,
+                NotificationModel.tenant_id == user_tenant
+            ).first()
+            
+            if notification:
+                notification.status = new_status
+                if new_status in ["resolved", "safe", "suppressed"]:
+                    notification.is_read = True
+                db.commit()
+                return {"message": f"Notification status updated to {new_status}"}
+            else:
+                raise HTTPException(status_code=404, detail="Notification not found")
+    else:
+        # Fallback - update in-memory data
+        tenant_notifications = fallback_notifications.get(user_tenant, [])
+        for notification in tenant_notifications:
+            if notification["id"] == notification_id:
+                notification["status"] = new_status
+                if new_status in ["resolved", "safe", "suppressed"]:
+                    notification["isRead"] = True
+                return {"message": f"Notification status updated to {new_status}"}
+        
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+@app.delete("/api/notifications/{notification_id}")
+def delete_notification(notification_id: str, current=Depends(get_current_user), db = Depends(get_db)):
+    """Delete a notification (admin only for security alerts)"""
+    user_tenant = current["tenantId"]
+    user_role = current.get("role", "user")
+    
+    if DATABASE_AVAILABLE and db:
+        # Handle security alerts (admin only)
+        if notification_id.startswith("alert_"):
+            if user_role != "admin":
+                raise HTTPException(status_code=403, detail="Only admins can delete security alerts")
+            
+            alert_id = int(notification_id.replace("alert_", ""))
+            try:
+                from database import SecurityAlert
+                alert = db.query(SecurityAlert).filter(
+                    SecurityAlert.id == alert_id,
+                    SecurityAlert.tenant_id == user_tenant
+                ).first()
+                
+                if alert:
+                    db.delete(alert)
+                    db.commit()
+                    return {"message": "Security alert deleted successfully"}
+                else:
+                    raise HTTPException(status_code=404, detail="Security alert not found")
+            except Exception as e:
+                print(f"Error deleting security alert: {e}")
+                raise HTTPException(status_code=500, detail="Failed to delete security alert")
+        
+        # Handle regular notifications
+        else:
+            notif_id = int(notification_id.replace("notif_", ""))
+            notification = db.query(NotificationModel).filter(
+                NotificationModel.id == notif_id,
+                NotificationModel.tenant_id == user_tenant
+            ).first()
+            
+            if notification:
+                db.delete(notification)
+                db.commit()
+                return {"message": "Notification deleted successfully"}
+            else:
+                raise HTTPException(status_code=404, detail="Notification not found")
+    else:
+        # Fallback - update in-memory data
+        tenant_notifications = fallback_notifications.get(user_tenant, [])
+        for i, notification in enumerate(tenant_notifications):
+            if notification["id"] == notification_id:
+                if notification_id.startswith("alert_") and user_role != "admin":
+                    raise HTTPException(status_code=403, detail="Only admins can delete security alerts")
+                
+                tenant_notifications.pop(i)
+                return {"message": "Notification deleted successfully"}
+        
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+@app.patch("/api/notifications/{notification_id}/suppress")
+def suppress_notification(notification_id: str, current=Depends(get_current_user), db = Depends(get_db)):
+    """Suppress a notification (admin only)"""
+    user_role = current.get("role", "user")
+    if user_role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can suppress notifications")
+    
+    return update_notification_status(notification_id, {"status": "suppressed"}, current, db)
+
+@app.patch("/api/notifications/{notification_id}/resolve")
+def resolve_notification(notification_id: str, current=Depends(get_current_user), db = Depends(get_db)):
+    """Resolve a notification"""
+    return update_notification_status(notification_id, {"status": "resolved"}, current, db)
+
+@app.patch("/api/notifications/{notification_id}/investigate")
+def investigate_notification(notification_id: str, current=Depends(get_current_user), db = Depends(get_db)):
+    """Mark notification as under investigation"""
+    return update_notification_status(notification_id, {"status": "investigating"}, current, db)
 
 @app.post("/api/reports/generate")
 def generate_report(report_type: str = "security", current=Depends(get_current_user), db = Depends(get_db)):

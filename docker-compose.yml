@@ -1,125 +1,161 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15
+  # Redis for caching and message queuing
+  redis:
+    image: redis:7-alpine
+    container_name: bits-siem-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: bits-siem-postgres
     environment:
+      POSTGRES_DB: siem
       POSTGRES_USER: siem
-      POSTGRES_PASSWORD: siempassword
-      POSTGRES_DB: siemdb
+      POSTGRES_PASSWORD: siem123
     ports:
       - "5432:5432"
     volumes:
+      - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U siem -d siem"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  api:
-    build: ./api
-    environment:
-      DATABASE_URL: postgresql+psycopg2://siem:siempassword@db:5432/siemdb
-    depends_on:
-      - db
-    ports:
-      - "8000:8000"
-
-  dashboard:
-    build: ./dashboard
-    depends_on:
-      - api
-    ports:
-      - "3000:80"
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-
-  ingestion:
-    build: ./ingestion
-    environment:
-      DATABASE_URL: postgresql+psycopg2://siem:siempassword@db:5432/siemdb
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      SYSLOG_UDP_PORT: 514
-      SYSLOG_TCP_PORT: 514
-      SYSLOG_TLS_PORT: 6514
-      BATCH_SIZE: 100
-      BATCH_TIMEOUT: 5
-      TENANT_IP_RANGES: '{"1": ["192.168.1.0/24"], "2": ["10.0.0.0/8"], "3": ["172.16.0.0/12"]}'
-      ENABLE_GEOLOCATION: "true"
-      ENABLE_ENRICHMENT: "true"
-      LOG_LEVEL: INFO
-    depends_on:
-      - db
-      - redis
-    ports:
-      - "514:514/udp"
-      - "514:514/tcp"
-      - "6514:6514"
-    volumes:
-      - ingestion_logs:/app/logs
-
-  processing:
-    build: ./processing
-    environment:
-      DATABASE_URL: postgresql+psycopg2://siem:siempassword@db:5432/siemdb
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      REDIS_PASSWORD: ""
-      STREAM_BACKEND: redis
-      STREAM_NAME: siem_events
-      CONSUMER_GROUP: processing_group
-      BATCH_SIZE: 50
-      BATCH_TIMEOUT: 10
-      BRUTE_FORCE_ENABLED: "true"
-      BRUTE_FORCE_THRESHOLD: 5
-      BRUTE_FORCE_WINDOW: 300
-      PORT_SCAN_ENABLED: "true"
-      PORT_SCAN_THRESHOLD: 10
-      PORT_SCAN_WINDOW: 300
-      ANOMALY_DETECTION_ENABLED: "true"
-      ANOMALY_THRESHOLD: 0.8
-      FEATURE_WINDOW: 600
-      MIN_SAMPLES: 10
-      ALERT_COOLDOWN: 300
-      CORRELATION_WINDOW: 900
-      MAX_CORRELATION_DISTANCE: 5
-      RATE_LIMIT_WINDOW: 3600
-      MAX_NOTIFICATIONS_PER_WINDOW: 100
-      METRICS_PORT: 8082
-      HEALTH_CHECK_INTERVAL: 30
-      METRICS_COLLECTION_INTERVAL: 60
-      LOG_LEVEL: INFO
-    depends_on:
-      - db
-      - redis
-      - ingestion
-    ports:
-      - "8082:8082"
-    volumes:
-      - processing_logs:/app/logs
-
+  # Enhanced Notification Service
   notification:
     build: ./notification
-    environment:
-      DATABASE_URL: postgresql+psycopg2://siem:siempassword@db:5432/siemdb
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-    depends_on:
-      - db
-      - redis
+    container_name: bits-siem-notification
     ports:
-      - "8083:8083"
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - SMTP_SERVER=localhost
+      - SMTP_PORT=587
+      - EMAIL_FROM=siem@company.com
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # API Service
+  api:
+    build: ./api
+    container_name: bits-siem-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://siem:siem123@postgres:5432/siem
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - NOTIFICATION_SERVICE_URL=http://notification:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+    volumes:
+      - ./api:/app
+    restart: unless-stopped
+
+  # Ingestion Service
+  ingestion:
+    build: ./ingestion
+    container_name: bits-siem-ingestion
+    ports:
+      - "514:514/udp"
+      - "601:601/tcp"
+      - "6514:6514/tcp"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - DATABASE_URL=postgresql://siem:siem123@postgres:5432/siem
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./ingestion:/app
+    restart: unless-stopped
+
+  # Processing Service
+  processing:
+    build: ./processing
+    container_name: bits-siem-processing
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - DATABASE_URL=postgresql://siem:siem123@postgres:5432/siem
+      - NOTIFICATION_SERVICE_URL=http://notification:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+    volumes:
+      - ./processing:/app
+    restart: unless-stopped
+
+  # Dashboard (Vue.js frontend)
+  dashboard:
+    build: ./dashboard
+    container_name: bits-siem-dashboard
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_NOTIFICATION_WS_URL=ws://localhost:8001
+    depends_on:
+      api:
+        condition: service_started
+      notification:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: bits-siem-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - api
+      - dashboard
+      - notification
+    restart: unless-stopped
 
 volumes:
   redis_data:
-    driver: local
-  ingestion_logs:
-    driver: local
-  processing_logs:
-    driver: local 
+  postgres_data:
