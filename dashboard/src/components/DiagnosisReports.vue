@@ -70,6 +70,48 @@
       </div>
     </div>
 
+    <!-- Filter & Sort Controls -->
+    <div class="filter-controls">
+      <h3>Filter & Sort Alerts</h3>
+      <div class="filter-grid">
+        <!-- Severity Filter -->
+        <div class="filter-group">
+          <label>By Severity:</label>
+          <div class="btn-group">
+            <button @click="severityFilter = 'all'" :class="{ active: severityFilter === 'all' }">All</button>
+            <button @click="severityFilter = 'critical'" :class="{ active: severityFilter === 'critical' }">Critical</button>
+            <button @click="severityFilter = 'warning'" :class="{ active: severityFilter === 'warning' }">Warning</button>
+            <button @click="severityFilter = 'info'" :class="{ active: severityFilter === 'info' }">Info</button>
+          </div>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div class="filter-group">
+          <label>By Date Range:</label>
+          <div class="date-range">
+            <input type="date" v-model="startDate">
+            <span>to</span>
+            <input type="date" v-model="endDate">
+          </div>
+        </div>
+
+        <!-- Sort By -->
+        <div class="filter-group">
+          <label>Sort By:</label>
+          <select v-model="sortBy" class="sort-select">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="severity">Severity</option>
+          </select>
+        </div>
+
+        <!-- Clear Button -->
+        <div class="filter-group">
+            <button @click="clearFilters" class="clear-btn">Clear Filters</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Export Controls -->
     <div class="export-controls">
       <h3>Export Security Reports</h3>
@@ -237,12 +279,55 @@ export default {
       itemsPerPage: 20,
       autoRefreshInterval: 0,
       autoRefreshTimer: null,
-      lastUpdated: ''
+      lastUpdated: '',
+      severityFilter: 'all', // 'all', 'critical', 'warning', 'info'
+      startDate: '',
+      endDate: '',
+      sortBy: 'newest' // 'newest', 'oldest', 'severity'
     }
   },
   computed: {
     filteredAlerts() {
-      return this.alerts
+      let filtered = [...this.alerts];
+
+      // Severity Filter
+      if (this.severityFilter !== 'all') {
+        if (this.severityFilter === 'warning') {
+          filtered = filtered.filter(a => ['high', 'warning', 'medium'].includes(a.severity));
+        } else if (this.severityFilter === 'info') {
+          filtered = filtered.filter(a => ['low', 'info'].includes(a.severity));
+        } else {
+          filtered = filtered.filter(a => a.severity === this.severityFilter);
+        }
+      }
+
+      // Date Range Filter
+      if (this.startDate) {
+        const start = new Date(this.startDate);
+        start.setHours(0, 0, 0, 0);
+        filtered = filtered.filter(a => new Date(a.created_at) >= start);
+      }
+      if (this.endDate) {
+        const end = new Date(this.endDate);
+        end.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(a => new Date(a.created_at) <= end);
+      }
+
+      // Sorting
+      const severityOrder = { critical: 4, high: 3, warning: 3, medium: 2, low: 1, info: 1 };
+      filtered.sort((a, b) => {
+        switch (this.sortBy) {
+          case 'oldest':
+            return new Date(a.created_at) - new Date(b.created_at);
+          case 'severity':
+            return (severityOrder[b.severity] || 0) - (severityOrder[a.severity] || 0);
+          case 'newest':
+          default:
+            return new Date(b.created_at) - new Date(a.created_at);
+        }
+      });
+
+      return filtered;
     },
     paginatedAlerts() {
       const start = (this.currentPage - 1) * this.itemsPerPage
@@ -260,6 +345,20 @@ export default {
     },
     infoCount() {
       return this.alerts.filter(a => ['low', 'info'].includes(a.severity)).length
+    }
+  },
+  watch: {
+    severityFilter() {
+      this.currentPage = 1;
+    },
+    startDate() {
+      this.currentPage = 1;
+    },
+    endDate() {
+      this.currentPage = 1;
+    },
+    sortBy() {
+      this.currentPage = 1;
     }
   },
   mounted() {
@@ -312,6 +411,12 @@ export default {
     },
     closeAlert() {
       this.selectedAlert = null
+    },
+    clearFilters() {
+      this.severityFilter = 'all';
+      this.startDate = '';
+      this.endDate = '';
+      this.sortBy = 'newest';
     },
     formatRefreshInterval(interval) {
       if (interval >= 60000) {
@@ -943,6 +1048,107 @@ export default {
   margin: 5px 0 0 0;
   line-height: 1.5;
   color: #666;
+}
+
+/* Filter Controls */
+.filter-controls {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  margin-bottom: 30px;
+}
+
+.filter-controls h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  align-items: end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+}
+
+.btn-group {
+  display: flex;
+}
+
+.btn-group button {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  flex-grow: 1;
+}
+
+.btn-group button:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.btn-group button:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.btn-group button.active {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.date-range input[type="date"] {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  flex-grow: 1;
+}
+
+.sort-select {
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+  width: 100%;
+}
+
+.clear-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #6c757d;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  width: 100%;
+}
+
+.clear-btn:hover {
+  background: #5a6268;
 }
 
 /* Responsive */
