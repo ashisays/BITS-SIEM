@@ -126,7 +126,7 @@ services:
 
   # Dashboard (Vue.js frontend)
   dashboard:
-    build: ./dashboard
+    image: bits-siem-dashboard:debug
     container_name: bits-siem-dashboard
     ports:
       - "3000:80"
